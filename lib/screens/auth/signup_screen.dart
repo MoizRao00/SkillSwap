@@ -27,11 +27,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _isLoading = true;
       });
 
+      final name = _nameController.text.trim();
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
-      final name = _nameController.text.trim();
 
-      User? user = await _authService.signUp(email, password, name);  // 👈 name pass karo
+      User? user = await _authService.signUp(name, email, password);  // 👈 name pass karo
 
       if (user != null) {
         // Signup success

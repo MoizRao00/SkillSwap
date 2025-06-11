@@ -2,19 +2,25 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../models/activity_model.dart';
 import '../models/chat_message.dart';
 import '../models/exchange_request.dart';
+import '../models/notification_model.dart';
+import '../models/potfolio_item.dart';
 import '../models/review_model.dart';
 import '../models/skill_model.dart';
 import '../models/usermodel.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  // Current user ka UID get karne ke liye
+  String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
   Stream<List<ExchangeRequest>> getExchangeRequests({
     required String userId,
     required bool isReceived,
-  }) {
+  })
+  {
     return _db
         .collection('exchanges')
         .where(isReceived ? 'receiverId' : 'senderId', isEqualTo: userId)
@@ -25,9 +31,6 @@ class FirestoreService {
             ExchangeRequest.fromMap({...doc.data(), 'id': doc.id}))
             .toList());
   }
-
-  // Current user ka UID get karne ke liye
-  String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
   // Add this to your FirestoreService class
   Future<bool> createInitialUserProfile(User firebaseUser) async {
@@ -111,7 +114,7 @@ class FirestoreService {
     }
   }
 
-  // 1) Get user skills as list (Your existing method - kept as is)
+  //  Get user skills as list (Your existing method - kept as is)
   Future<List<Skill>> getUserSkills(String uid) async {
     try {
       final snap = await _db.collection('users')
@@ -127,7 +130,7 @@ class FirestoreService {
     }
   }
 
-  // 2) Add a new skill (Your existing method - enhanced with error handling)
+  //  Add a new skill (Your existing method - enhanced with error handling)
   Future<bool> addUserSkill(String uid, String skillName) async {
     print('🔍 addUserSkill called for uid=$uid, skill="$skillName"');
     try {
@@ -138,10 +141,22 @@ class FirestoreService {
       final docRef = await col.add({'name': skillName});
       print('✅ Skill doc created with ID=${docRef.id}');
 
-      // Also update user's main skillsToTeach array for easy searching
+      // Update main skillsToTeach array
       await updateUser(uid, {
         'skillsToTeach': FieldValue.arrayUnion([skillName])
       });
+
+      // Create activity
+      await createActivity(
+        userId: uid,
+        type: ActivityType.skillAdded,
+        title: 'New Skill Added',
+        description: 'You added $skillName to your teaching skills',
+        data: {
+          'skillName': skillName,
+          'skillId': docRef.id,
+        },
+      );
 
       return true;
     } catch (e) {
@@ -150,9 +165,11 @@ class FirestoreService {
     }
   }
 
-  // 3) Remove a skill by document ID (Your existing method - enhanced)
+
+  //  Remove a skill by document ID (Your existing method - enhanced)
   Future<bool> removeUserSkill(String uid, String skillId,
-      String skillName) async {
+      String skillName)
+  async {
     try {
       // Remove from subcollection
       await _db.collection('users')
@@ -250,7 +267,8 @@ class FirestoreService {
 
   // Update user rating after skill exchange
   Future<bool> updateUserRating(String uid, double newRating,
-      int totalExchanges) async {
+      int totalExchanges)
+  async {
     return await updateUser(uid, {
       'rating': newRating,
       'totalExchanges': totalExchanges,
@@ -296,7 +314,8 @@ class FirestoreService {
     required String message,
     String? location,
     DateTime? scheduledDate,
-  }) async {
+  })
+  async {
     try {
       final sender = FirebaseAuth.instance.currentUser;
       if (sender == null) return false;
@@ -315,12 +334,28 @@ class FirestoreService {
       );
 
       await docRef.set(request.toMap());
+
+      // Create activity for receiver
+      await createActivity(
+        userId: receiverId,
+        type: ActivityType.exchangeRequest,
+        title: 'New Exchange Request',
+        description: 'Someone wants to exchange $senderSkill for $receiverSkill',
+        data: {
+          'exchangeId': docRef.id,
+          'senderId': sender.uid,
+          'senderSkill': senderSkill,
+          'receiverSkill': receiverSkill,
+        },
+      );
+
       return true;
     } catch (e) {
       print('❌ Error creating exchange request: $e');
       return false;
     }
   }
+
 
   // Get user's exchange requests (both sent and received)
   Stream<List<ExchangeRequest>> getUserExchangeRequests() {
@@ -347,12 +382,77 @@ class FirestoreService {
   }
 
   // Update exchange request status
-  Future<bool> updateExchangeStatus(String exchangeId,
-      ExchangeStatus status,) async {
+  Future<bool> updateExchangeStatus(
+      String exchangeId,
+      ExchangeStatus status,
+      )
+  async {
     try {
       await _db.collection('exchanges').doc(exchangeId).update({
         'status': status.toString(),
       });
+
+      // Get exchange details
+      final exchange = await _db.collection('exchanges').doc(exchangeId).get();
+      final exchangeData = exchange.data();
+      if (exchangeData == null) return true;
+
+      // Create appropriate activity based on status
+      switch (status) {
+        case ExchangeStatus.accepted:
+          await createActivity(
+            userId: exchangeData['senderId'],
+            type: ActivityType.exchangeAccepted,
+            title: 'Exchange Request Accepted',
+            description: 'Your exchange request has been accepted',
+            data: {
+              'exchangeId': exchangeId,
+              'receiverId': exchangeData['receiverId'],
+            },
+          );
+          break;
+
+        case ExchangeStatus.completed:
+        // Create activity for both users
+          await createActivity(
+            userId: exchangeData['senderId'],
+            type: ActivityType.exchangeCompleted,
+            title: 'Exchange Completed',
+            description: 'Skill exchange completed successfully',
+            data: {
+              'exchangeId': exchangeId,
+              'receiverId': exchangeData['receiverId'],
+            },
+          );
+          await createActivity(
+            userId: exchangeData['receiverId'],
+            type: ActivityType.exchangeCompleted,
+            title: 'Exchange Completed',
+            description: 'Skill exchange completed successfully',
+            data: {
+              'exchangeId': exchangeId,
+              'senderId': exchangeData['senderId'],
+            },
+          );
+          break;
+
+        case ExchangeStatus.declined:
+          await createActivity(
+            userId: exchangeData['senderId'],
+            type: ActivityType.exchangeRequest,
+            title: 'Exchange Request Declined',
+            description: 'Your exchange request was declined',
+            data: {
+              'exchangeId': exchangeId,
+              'receiverId': exchangeData['receiverId'],
+            },
+          );
+          break;
+
+        default:
+          break;
+      }
+
       return true;
     } catch (e) {
       print('❌ Error updating exchange status: $e');
@@ -433,7 +533,6 @@ class FirestoreService {
       final reviewer = FirebaseAuth.instance.currentUser;
       if (reviewer == null) return false;
 
-      // Create review document
       final docRef = _db.collection('reviews').doc();
       final review = Review(
         id: docRef.id,
@@ -445,30 +544,21 @@ class FirestoreService {
         createdAt: DateTime.now(),
       );
 
-      // Start a batch write
-      final batch = _db.batch();
+      await docRef.set(review.toMap());
 
-      // Add review
-      batch.set(docRef, review.toMap());
+      // Create activity for reviewed user
+      await createActivity(
+        userId: reviewedUserId,
+        type: ActivityType.newReview,
+        title: 'New Review Received',
+        description: 'Someone left you a review',
+        data: {
+          'reviewId': docRef.id,
+          'exchangeId': exchangeId,
+          'rating': rating,
+        },
+      );
 
-      // Get user's current rating and total exchanges
-      final userDoc = await _db.collection('users').doc(reviewedUserId).get();
-      final userData = userDoc.data() as Map<String, dynamic>;
-      final currentRating = (userData['rating'] ?? 0.0).toDouble();
-      final totalExchanges = (userData['totalExchanges'] ?? 0) + 1;
-
-      // Calculate new rating
-      final newRating = ((currentRating * (totalExchanges - 1)) + rating) / totalExchanges;
-
-      // Update user's rating and total exchanges
-      batch.update(_db.collection('users').doc(reviewedUserId), {
-        'rating': newRating,
-        'totalExchanges': totalExchanges,
-        'reviews': FieldValue.arrayUnion([docRef.id]),
-      });
-
-      // Commit the batch
-      await batch.commit();
       return true;
     } catch (e) {
       print('❌ Error submitting review: $e');
@@ -487,6 +577,7 @@ class FirestoreService {
         .map((doc) => Review.fromMap({...doc.data(), 'id': doc.id}))
         .toList());
   }
+
   Future<List<Review>> getExchangeReviews(String exchangeId) async {
     try {
       final snapshot = await _db
@@ -500,6 +591,370 @@ class FirestoreService {
     } catch (e) {
       print('❌ Error getting exchange reviews: $e');
       return [];
+    }
+  }
+  // Add to FirestoreService class
+
+  Stream<List<UserModel>> getNearbyUsers() {
+    // Implement based on user's location
+    return _db
+        .collection('users')
+        .where('isAvailable', isEqualTo: true)
+        .limit(10)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => UserModel.fromMap(doc.data()))
+        .toList());
+  }
+
+  Stream<List<UserModel>> getPotentialMatches() {
+    // Implement based on user's skills
+    return _db
+        .collection('users')
+        .where('isAvailable', isEqualTo: true)
+        .limit(5)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => UserModel.fromMap(doc.data()))
+        .toList());
+  }
+
+  Stream<List<dynamic>> getRecentActivities() {
+    // Implement based on your activity tracking
+    return Stream.value([]); // Placeholder
+  }
+
+  // Create a new activity
+  Future<void> createActivity({
+    required String userId,
+    required ActivityType type,
+    required String title,
+    required String description,
+    required Map<String, dynamic> data,
+  })
+  async {
+    try {
+      final docRef = _db.collection('activities').doc();
+      final activity = Activity(
+        id: docRef.id,
+        userId: userId,
+        type: type,
+        title: title,
+        description: description,
+        timestamp: DateTime.now(),
+        data: data,
+      );
+
+      await docRef.set(activity.toMap());
+    } catch (e) {
+      print('❌ Error creating activity: $e');
+    }
+  }
+
+  // Get user's activities stream
+  Stream<List<Activity>> getUserActivities(String userId) {
+    return _db
+        .collection('activities')
+        .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .limit(20)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => Activity.fromMap(doc.data()))
+        .toList());
+  }
+
+  // Mark activity as read
+  Future<void> markActivityAsRead(String activityId) async {
+    try {
+      await _db
+          .collection('activities')
+          .doc(activityId)
+          .update({'isRead': true});
+    } catch (e) {
+      print('❌ Error marking activity as read: $e');
+    }
+  }
+  // In FirestoreService class
+
+  // Portfolio methods
+  Stream<List<PortfolioItem>> getUserPortfolio(String userId) {
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('portfolio')
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => PortfolioItem.fromMap({...doc.data(), 'id': doc.id}))
+        .toList());
+  }
+
+  Future<void> addPortfolioItem(
+      String userId, {
+        required String title,
+        required String description,
+        required List<String> tags,
+        String? imageUrl,
+      })
+  async {
+    try {
+      final docRef = _db
+          .collection('users')
+          .doc(userId)
+          .collection('portfolio')
+          .doc();
+
+      final item = PortfolioItem(
+        id: docRef.id,
+        title: title,
+        description: description,
+        imageUrl: imageUrl,
+        date: DateTime.now(),
+        tags: tags,
+      );
+
+      await docRef.set(item.toMap());
+
+      // Create activity
+      await createActivity(
+        userId: userId,
+        type: ActivityType.profileUpdate,
+        title: 'Portfolio Updated',
+        description: 'Added new portfolio item: $title',
+        data: {
+          'portfolioItemId': docRef.id,
+        },
+      );
+    } catch (e) {
+      print('❌ Error adding portfolio item: $e');
+    }
+  }
+
+  Future<void> deletePortfolioItem(String userId, String itemId) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('portfolio')
+          .doc(itemId)
+          .delete();
+    } catch (e) {
+      print('❌ Error deleting portfolio item: $e');
+    }
+  }
+// Add these methods to your FirestoreService class if they don't exist
+
+  Future<bool> addLearningSkill(String uid, String skillName) async {
+    try {
+      await updateUser(uid, {
+        'skillsToLearn': FieldValue.arrayUnion([skillName])
+      });
+      return true;
+    } catch (e) {
+      print('❌ Error adding learning skill: $e');
+      return false;
+    }
+  }
+
+  Future<bool> removeLearningSkill(String uid, String skillId, String skillName) async {
+    try {
+      await updateUser(uid, {
+        'skillsToLearn': FieldValue.arrayRemove([skillName])
+      });
+      return true;
+    } catch (e) {
+      print('❌ Error removing learning skill: $e');
+      return false;
+    }
+  }
+
+  Stream<List<Skill>> getUserLearningSkillsStream(String uid) {
+    return _db.collection('users')
+        .doc(uid)
+        .snapshots()
+        .map((doc) {
+      final data = doc.data();
+      if (data != null && data['skillsToLearn'] != null) {
+        return (data['skillsToLearn'] as List)
+            .map((skill) => Skill(id: skill, name: skill))
+            .toList();
+      }
+      return <Skill>[];
+    });
+  }
+// Add these methods to your FirestoreService class
+
+  // Create a notification
+  Future<void> createNotification({
+    required String userId,
+    required String title,
+    required String message,
+    required NotificationType type,
+    Map<String, dynamic> data = const {},
+  }) async
+  {
+    try {
+      final docRef = _db.collection('notifications').doc();
+      final notification = NotificationModel(
+        id: docRef.id,
+        userId: userId,
+        title: title,
+        message: message,
+        type: type,
+        timestamp: DateTime.now(),
+        data: data,
+      );
+
+      await docRef.set(notification.toMap());
+    } catch (e) {
+      print('❌ Error creating notification: $e');
+    }
+  }
+
+  // Get user's notifications
+  Stream<List<NotificationModel>> getUserNotifications(String userId) {
+    return _db
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+        .map((doc) => NotificationModel.fromMap(doc.data()))
+        .toList());
+  }
+
+  // Mark notification as read
+  Future<void> markNotificationAsRead(String notificationId) async {
+    try {
+      await _db
+          .collection('notifications')
+          .doc(notificationId)
+          .update({'isRead': true});
+    } catch (e) {
+      print('❌ Error marking notification as read: $e');
+    }
+  }
+
+  // Delete notification
+  Future<void> deleteNotification(String notificationId)
+  async {
+    try {
+      await _db.collection('notifications').doc(notificationId).delete();
+    } catch (e) {
+      print('❌ Error deleting notification: $e');
+    }
+  }
+// In lib/services/firestore_service.dart
+
+// Add this method to your FirestoreService class
+  Future<List<UserModel>> searchUsers({
+    required String query,
+    required bool searchSkills,
+    String skillType = 'teaching',
+    double minRating = 0.0,
+    bool onlyAvailable = true,
+  })
+  async {
+    try {
+      Query usersQuery = _db.collection('users');
+
+      // Apply availability filter
+      if (onlyAvailable) {
+        usersQuery = usersQuery.where('isAvailable', isEqualTo: true);
+      }
+
+      // Apply rating filter
+      if (minRating > 0) {
+        usersQuery = usersQuery.where('rating', isGreaterThanOrEqualTo: minRating);
+      }
+
+      // Apply search filter
+      if (searchSkills) {
+        // Search by skills
+        final field = skillType == 'teaching' ? 'skillsToTeach' : 'skillsToLearn';
+        usersQuery = usersQuery.where(field, arrayContains: query.toLowerCase());
+      } else {
+        // Search by location
+        final lowercaseQuery = query.toLowerCase();
+        usersQuery = usersQuery
+            .where('location', isGreaterThanOrEqualTo: lowercaseQuery)
+            .where('location', isLessThan: lowercaseQuery + 'z');
+      }
+
+      // Get results
+      final snapshot = await usersQuery.limit(20).get();
+
+      // Convert to UserModel list
+      return snapshot.docs
+          .map((doc) => UserModel.fromMap(doc.data() as Map<String, dynamic>))
+          .where((user) => user.uid != FirebaseAuth.instance.currentUser?.uid) // Exclude current user
+          .toList();
+    } catch (e) {
+      print('❌ Error searching users: $e');
+      return [];
+    }
+  }
+
+  Future<List<String>> getPopularSkills() async {
+    try {
+      final snapshot = await _db.collection('users').limit(50).get();
+      final skills = <String>{};
+
+      for (var doc in snapshot.docs) {
+        final user = UserModel.fromMap(doc.data());
+        skills.addAll(user.skillsToTeach);
+        skills.addAll(user.skillsToLearn);
+      }
+
+      return skills.toList()..sort();
+    } catch (e) {
+      print('❌ Error getting popular skills: $e');
+      return [];
+    }
+  }
+
+  Future<List<String>> getLocations() async {
+    try {
+      final snapshot = await _db
+          .collection('users')
+          .where('location', isNull: false)
+          .limit(50)
+          .get();
+
+      final locations = <String>{};
+
+      for (var doc in snapshot.docs) {
+        final location = doc.data()['location'] as String?;
+        if (location != null) {
+          locations.add(location);
+        }
+      }
+
+      return locations.toList()..sort();
+    } catch (e) {
+      print('❌ Error getting locations: $e');
+      return [];
+    }
+  }
+  // In FirestoreService class
+
+  Future<void> markAllNotificationsAsRead(String userId) async {
+    try {
+      final batch = _db.batch();
+      final notifications = await _db
+          .collection('notifications')
+          .where('userId', isEqualTo: userId)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      for (var doc in notifications.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+
+      await batch.commit();
+    } catch (e) {
+      print('❌ Error marking all notifications as read: $e');
     }
   }
 }

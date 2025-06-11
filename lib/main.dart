@@ -7,5 +7,7 @@ import 'app.dart'; // Is file mein MaterialApp aur routes defined hongi
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // Firebase init se pehle ye zaroori hota hai
   await Firebase.initializeApp();
+
+
   runApp(const App()); // App() widget se pura app start hota hai
 }

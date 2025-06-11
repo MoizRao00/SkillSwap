@@ -5,18 +5,35 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/exchange_request.dart';
 import '../../services/firestore_service.dart';
 import '../../models/usermodel.dart';
+import '../../widgets/animation/fade_animation.dart';
+import '../../widgets/animation/slide_animation.dart';
 import '../chat/chat_screen.dart';
-import '../review/review_screen.dart';
+import '../search/screen_search.dart';
 
 class ExchangeRequestsListScreen extends StatefulWidget {
   const ExchangeRequestsListScreen({super.key});
 
   @override
-  State<ExchangeRequestsListScreen> createState() => _ExchangeRequestsListScreenState();
+  State<ExchangeRequestsListScreen> createState() =>
+      _ExchangeRequestsListScreenState();
 }
 
-class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen> {
+class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
+    with SingleTickerProviderStateMixin {
   final FirestoreService _fs = FirestoreService();
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,33 +45,92 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
       );
     }
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Skill Exchanges'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Received'),
-              Tab(text: 'Sent'),
-            ],
-          ),
-        ),
-        body: TabBarView(
-          children: [
-            // Received Requests Tab
-            _RequestsList(
-              userId: currentUser.uid,
-              isReceived: true,
-              firestoreService: _fs,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Skill Exchanges'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.inbox),
+                  const SizedBox(width: 8),
+                  const Text('Received'),
+                  StreamBuilder<List<ExchangeRequest>>(
+                    stream: _fs.getExchangeRequests(
+                      userId: currentUser.uid,
+                      isReceived: true,
+                    ),
+                    builder: (context, snapshot) {
+                      final pendingCount =
+                          snapshot.data
+                              ?.where((r) => r.status == ExchangeStatus.pending)
+                              .length ??
+                          0;
+                      if (pendingCount == 0) return const SizedBox();
+                      return Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          pendingCount.toString(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-            // Sent Requests Tab
-            _RequestsList(
-              userId: currentUser.uid,
-              isReceived: false,
-              firestoreService: _fs,
+            const Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.outbox),
+                  SizedBox(width: 8),
+                  Text('Sent'),
+                ],
+              ),
             ),
           ],
+        ),
+      ),
+
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _RequestsList(
+            userId: currentUser.uid,
+            isReceived: true,
+            firestoreService: _fs,
+          ),
+          _RequestsList(
+            userId: currentUser.uid,
+            isReceived: false,
+            firestoreService: _fs,
+          ),
+        ],
+      ),
+      floatingActionButton: FadeAnimation(
+        child: FloatingActionButton.extended(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const SearchScreen(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.add),
+          label: const Text('New Exchange'),
         ),
       ),
     );
@@ -99,9 +175,7 @@ class _RequestsListState extends State<_RequestsList> {
                 Text('Error: ${snapshot.error}'),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: () {
-                    setState(() {}); // Now setState is available
-                  },
+                  onPressed: () => setState(() {}),
                   child: const Text('Retry'),
                 ),
               ],
@@ -112,31 +186,33 @@ class _RequestsListState extends State<_RequestsList> {
         final requests = snapshot.data ?? [];
 
         if (requests.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  widget.isReceived ? Icons.inbox : Icons.outbox,
-                  size: 64,
-                  color: Colors.grey,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'No ${widget.isReceived ? 'received' : 'sent'} requests',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  widget.isReceived
-                      ? 'When someone requests to exchange skills with you,\nthey will appear here'
-                      : 'When you send skill exchange requests,\nthey will appear here',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey,
+          return FadeAnimation(
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    widget.isReceived ? Icons.inbox : Icons.outbox,
+                    size: 64,
+                    color: Colors.grey.withOpacity(0.5),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  Text(
+                    'No ${widget.isReceived ? 'received' : 'sent'} requests',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.isReceived
+                        ? 'When someone requests to exchange skills with you,\nthey will appear here'
+                        : 'When you send skill exchange requests,\nthey will appear here',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -146,10 +222,14 @@ class _RequestsListState extends State<_RequestsList> {
           itemCount: requests.length,
           itemBuilder: (context, index) {
             final request = requests[index];
-            return _ExchangeRequestCard(
-              request: request,
-              isReceived: widget.isReceived,
-              firestoreService: widget.firestoreService,
+            return SlideAnimation(
+              direction: SlideDirection.fromRight,
+              delay: Duration(milliseconds: index * 100),
+              child: _ExchangeRequestCard(
+                request: request,
+                isReceived: widget.isReceived,
+                firestoreService: widget.firestoreService,
+              ),
             );
           },
         );
@@ -169,340 +249,258 @@ class _ExchangeRequestCard extends StatelessWidget {
     required this.firestoreService,
   });
 
-  Future<bool> _hasUserReviewed(String exchangeId, String userId) async {
-    try {
-      final reviews = await firestoreService.getExchangeReviews(exchangeId);
-      return reviews.any((review) => review.reviewerId == userId);
-    } catch (e) {
-      print('❌ Error checking review status: $e');
-      return false;
-    }
-  }
-
-  void _openChat(BuildContext context, UserModel otherUser) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          exchange: request,
-          otherUser: otherUser,
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: InkWell(
+        onTap: () async {
+          if (request.status == ExchangeStatus.accepted) {
+            final otherUser = await firestoreService.getUser(
+              isReceived ? request.senderId : request.receiverId,
+            );
+            if (otherUser != null && context.mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      ChatScreen(exchange: request, otherUser: otherUser),
+                ),
+              );
+            }
+          }
+        },
+        child: Column(
+          children: [
+            _buildHeader(context),
+            _buildBody(context),
+            if (request.status == ExchangeStatus.pending && isReceived)
+              _buildActions(context),
+            if (request.status == ExchangeStatus.accepted)  // Add this line
+              _buildChatButton(context),                    // Add this line
+          ],
         ),
       ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
-      // Check if user has reviewed when exchange is completed
-        future: request.status == ExchangeStatus.completed
-            ? _hasUserReviewed(
-          request.id,
-          FirebaseAuth.instance.currentUser?.uid ?? '',
-        )
-            : Future.value(false),
-        builder: (context, snapshot) {
-          final hasReviewed = snapshot.data ?? false;
-          return Card(
-            elevation: 2,
-            margin: const EdgeInsets.only(bottom: 16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildChatButton(BuildContext context) {
+    if (request.status == ExchangeStatus.accepted) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            // Complete/Cancel buttons
+            Expanded(
+              child: Row(
                 children: [
-                  // Status and Date Row
-                  Row(
-                    children: [
-                      _buildStatusChip(),
-                      const Spacer(),
-                      Text(
-                        _formatDate(request.createdAt),
-                        style: Theme
-                            .of(context)
-                            .textTheme
-                            .bodySmall,
-                      ),
-                    ],
+                  TextButton(
+                    onPressed: () async {
+                      await firestoreService.updateExchangeStatus(
+                        request.id,
+                        ExchangeStatus.cancelled,
+                      );
+                    },
+                    child: const Text('Cancel'),
                   ),
-                  const Divider(),
-
-                  // Skills Exchange Section
-                  _buildSkillsExchange(context),
-                  const SizedBox(height: 16),
-
-                  // Message Section
-                  if (request.message.isNotEmpty) ...[
-                    Text(
-                      'Message:',
-                      style: Theme
-                          .of(context)
-                          .textTheme
-                          .titleSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(request.message),
-                    const SizedBox(height: 16),
-                  ],
-
-                  // Details Section
-                  if (request.location != null || request.scheduledDate != null)
-                    _buildDetailsSection(context),
-
-                  // Pending Request Buttons
-                  if (request.status == ExchangeStatus.pending &&
-                      isReceived) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () async {
-                            await firestoreService.updateExchangeStatus(
-                              request.id,
-                              ExchangeStatus.declined,
-                            );
-                          },
-                          child: const Text('Decline'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: () async {
-                            await firestoreService.updateExchangeStatus(
-                              request.id,
-                              ExchangeStatus.accepted,
-                            );
-                          },
-                          child: const Text('Accept'),
-                        ),
-                        if (request.status == ExchangeStatus.completed &&
-                            !hasReviewed) ...[
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            icon: const Icon(Icons.star),
-                            label: const Text('Write Review'),
-                            onPressed: () async {
-                              final otherUserId = isReceived
-                                  ? request.senderId
-                                  : request.receiverId;
-                              final otherUser = await firestoreService.getUser(
-                                  otherUserId);
-                              if (otherUser != null && context.mounted) {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) =>
-                                        ReviewScreen(
-                                          exchange: request,
-                                          otherUser: otherUser,
-                                        ),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                        ],
-                      ],
-
-                    ),
-                  ],
-
-                  // Accepted Request Buttons (Chat, Complete, Cancel)
-                  if (request.status == ExchangeStatus.accepted) ...[
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Complete/Cancel buttons
-                        Expanded(
-                          child: Row(
-                            children: [
-                              TextButton(
-                                onPressed: () async {
-                                  await firestoreService.updateExchangeStatus(
-                                    request.id,
-                                    ExchangeStatus.cancelled,
-                                  );
-                                },
-                                child: const Text('Cancel'),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                onPressed: () async {
-                                  await firestoreService.updateExchangeStatus(
-                                    request.id,
-                                    ExchangeStatus.completed,
-                                  );
-                                },
-                                child: const Text('Complete'),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Chat button
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.chat),
-                          label: const Text('Chat'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme
-                                .of(context)
-                                .primaryColor,
-                          ),
-                          onPressed: () async {
-                            // Get the other user's data
-                            final otherUserId = isReceived
-                                ? request.senderId
-                                : request.receiverId;
-                            final otherUser = await firestoreService.getUser(
-                                otherUserId);
-                            if (otherUser != null && context.mounted) {
-                              _openChat(context, otherUser);
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await firestoreService.updateExchangeStatus(
+                        request.id,
+                        ExchangeStatus.completed,
+                      );
+                    },
+                    child: const Text('Complete'),
+                  ),
                 ],
               ),
             ),
-          );
-        }
-    );
-
+            // Chat button
+            ElevatedButton.icon(
+              icon: const Icon(Icons.chat),
+              label: const Text('Chat'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+              ),
+              onPressed: () async {
+                final otherUser = await firestoreService.getUser(
+                  isReceived ? request.senderId : request.receiverId,
+                );
+                if (otherUser != null && context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          ChatScreen(exchange: request, otherUser: otherUser),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
   }
-  Widget _buildStatusChip() {
-    Color chipColor;
-    IconData iconData;
 
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _getStatusColor().withOpacity(0.1),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+      ),
+      child: Row(
+        children: [
+          Icon(_getStatusIcon(), color: _getStatusColor()),
+          const SizedBox(width: 8),
+          Text(
+            request.status.toString().split('.').last.toUpperCase(),
+            style: TextStyle(
+              color: _getStatusColor(),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            _formatDate(request.createdAt),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isReceived ? 'They\'ll teach:' : 'You\'ll teach:',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      request.senderSkill,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.swap_horiz),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      isReceived ? 'You\'ll teach:' : 'They\'ll teach:',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    Text(
+                      request.receiverSkill,
+                      style: Theme.of(context).textTheme.titleMedium,
+                      textAlign: TextAlign.end,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (request.message.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Message:', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(request.message),
+          ],
+          if (request.location != null || request.scheduledDate != null) ...[
+            const SizedBox(height: 16),
+            if (request.location != null)
+              Row(
+                children: [
+                  const Icon(Icons.location_on, size: 16),
+                  const SizedBox(width: 4),
+                  Text(request.location!),
+                ],
+              ),
+            if (request.scheduledDate != null)
+              Row(
+                children: [
+                  const Icon(Icons.calendar_today, size: 16),
+                  const SizedBox(width: 4),
+                  Text(_formatDate(request.scheduledDate!)),
+                ],
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () async {
+              await firestoreService.updateExchangeStatus(
+                request.id,
+                ExchangeStatus.declined,
+              );
+            },
+            child: const Text('Decline'),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () async {
+              await firestoreService.updateExchangeStatus(
+                request.id,
+                ExchangeStatus.accepted,
+              );
+            },
+            child: const Text('Accept'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _getStatusColor() {
     switch (request.status) {
       case ExchangeStatus.pending:
-        chipColor = Colors.orange;
-        iconData = Icons.schedule;
-        break;
+        return Colors.orange;
       case ExchangeStatus.accepted:
-        chipColor = Colors.green;
-        iconData = Icons.check_circle;
-        break;
+        return Colors.green;
       case ExchangeStatus.completed:
-        chipColor = Colors.blue;
-        iconData = Icons.star;
-        break;
+        return Colors.blue;
       case ExchangeStatus.declined:
       case ExchangeStatus.cancelled:
-        chipColor = Colors.red;
-        iconData = Icons.cancel;
-        break;
+        return Colors.red;
     }
-
-    return Chip(
-      avatar: Icon(iconData, size: 16, color: chipColor),
-      label: Text(
-        request.status.toString().split('.').last.toUpperCase(),
-        style: TextStyle(color: chipColor),
-      ),
-      backgroundColor: chipColor.withOpacity(0.1),
-    );
   }
 
-  Widget _buildSkillsExchange(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                isReceived ? 'They\'ll teach:' : 'You\'ll teach:',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              Text(
-                request.senderSkill,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ],
-          ),
-        ),
-        const Icon(Icons.swap_horiz),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                isReceived ? 'You\'ll teach:' : 'They\'ll teach:',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              Text(
-                request.receiverSkill,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailsSection(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Details:',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
-        const SizedBox(height: 8),
-        if (request.location != null)
-          Row(
-            children: [
-              const Icon(Icons.location_on, size: 16),
-              const SizedBox(width: 4),
-              Text(request.location!),
-            ],
-          ),
-        if (request.scheduledDate != null)
-          Row(
-            children: [
-              const Icon(Icons.calendar_today, size: 16),
-              const SizedBox(width: 4),
-              Text(_formatDate(request.scheduledDate!)),
-            ],
-          ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-
-  Widget _buildActionButtons(BuildContext context) {
-    if (!isReceived || request.status != ExchangeStatus.pending) {
-      return const SizedBox.shrink();
+  IconData _getStatusIcon() {
+    switch (request.status) {
+      case ExchangeStatus.pending:
+        return Icons.schedule;
+      case ExchangeStatus.accepted:
+        return Icons.check_circle;
+      case ExchangeStatus.completed:
+        return Icons.star;
+      case ExchangeStatus.declined:
+      case ExchangeStatus.cancelled:
+        return Icons.cancel;
     }
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: [
-        TextButton(
-          onPressed: () async {
-            await firestoreService.updateExchangeStatus(
-              request.id,
-              ExchangeStatus.declined,
-            );
-          },
-          child: const Text('Decline'),
-        ),
-        const SizedBox(width: 8),
-        ElevatedButton(
-          onPressed: () async {
-            await firestoreService.updateExchangeStatus(
-              request.id,
-              ExchangeStatus.accepted,
-
-            );
-          },
-          child: const Text('Accept'),
-        ),
-      ],
-    );
   }
 
   String _formatDate(DateTime date) {

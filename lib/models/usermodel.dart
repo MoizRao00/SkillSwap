@@ -1,31 +1,27 @@
+// In lib/models/usermodel.dart
+
+import 'package:skillswap/models/potfolio_item.dart';
+
 class UserModel {
-  // Basic user identification
-  final String uid;              // Firebase Auth UID - unique identifier
-  final String email;            // User's email address
-  final String name;             // User's display name
+  final String uid;
+  final String email;
+  final String name;
+  final String? profilePicUrl;
+  final String? bio;
+  final String? phone;
+  final String? location;
+  final List<String> skillsToTeach;
+  final List<String> skillsToLearn;
+  final double rating;
+  final int totalExchanges;
+  final List<String> reviews;
+  final DateTime createdAt;
+  final DateTime lastActive;
+  final bool isAvailable;
+  final bool isVerified;
+  // Add this new field
+  final List<PortfolioItem> portfolio;
 
-  // Profile information
-  final String? profilePicUrl;   // URL to profile picture in Firebase Storage
-  final String? bio;             // Short description about the user
-  final String? phone;           // Contact number (optional)
-  final String? location;        // User's city/area for local exchanges
-
-  // Skills-related data
-  final List<String> skillsToTeach;  // Skills user can offer to others
-  final List<String> skillsToLearn;  // Skills user wants to learn
-
-  // Reputation system
-  final double rating;           // Average rating (0.0 to 5.0)
-  final int totalExchanges;      // Total completed skill exchanges
-  final List<String> reviews;    // List of review IDs (references to review collection)
-
-  // User activity
-  final DateTime createdAt;      // When account was created
-  final DateTime lastActive;     // Last time user was online
-  final bool isAvailable;        // Is user currently available for exchanges
-  final bool isVerified;         // Is user verified (email/phone verification)
-
-  // Constructor - creates new UserModel instance
   UserModel({
     required this.uid,
     required this.email,
@@ -43,10 +39,10 @@ class UserModel {
     required this.lastActive,
     this.isAvailable = true,
     this.isVerified = false,
+    this.portfolio = const [], // Add this
   });
 
-  // Convert UserModel to Map for storing in Firestore
-  // Firestore stores data as Map<String, dynamic>
+  // Update toMap method
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -61,15 +57,15 @@ class UserModel {
       'rating': rating,
       'totalExchanges': totalExchanges,
       'reviews': reviews,
-      'createdAt': createdAt.toIso8601String(), // Convert DateTime to String
+      'createdAt': createdAt.toIso8601String(),
       'lastActive': lastActive.toIso8601String(),
       'isAvailable': isAvailable,
       'isVerified': isVerified,
+      'portfolio': portfolio.map((item) => item.toMap()).toList(), // Add this
     };
   }
 
-  // Create UserModel from Firestore document data
-  // This converts Map back to UserModel object
+  // Update fromMap factory
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       uid: map['uid'] ?? '',
@@ -84,15 +80,17 @@ class UserModel {
       rating: (map['rating'] ?? 0.0).toDouble(),
       totalExchanges: map['totalExchanges'] ?? 0,
       reviews: List<String>.from(map['reviews'] ?? []),
-      createdAt: DateTime.parse(map['createdAt']), // Convert String back to DateTime
+      createdAt: DateTime.parse(map['createdAt']),
       lastActive: DateTime.parse(map['lastActive']),
       isAvailable: map['isAvailable'] ?? true,
       isVerified: map['isVerified'] ?? false,
+      portfolio: (map['portfolio'] as List<dynamic>?)
+          ?.map((item) => PortfolioItem.fromMap(item))
+          .toList() ?? [], // Add this
     );
   }
 
-  // Create a copy of UserModel with some fields updated
-  // This is useful for updating user data without creating completely new object
+  // Update copyWith method
   UserModel copyWith({
     String? uid,
     String? email,
@@ -110,6 +108,7 @@ class UserModel {
     DateTime? lastActive,
     bool? isAvailable,
     bool? isVerified,
+    List<PortfolioItem>? portfolio, // Add this
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -128,23 +127,7 @@ class UserModel {
       lastActive: lastActive ?? this.lastActive,
       isAvailable: isAvailable ?? this.isAvailable,
       isVerified: isVerified ?? this.isVerified,
+      portfolio: portfolio ?? this.portfolio, // Add this
     );
   }
-
-  // Convert UserModel to String (useful for debugging)
-  @override
-  String toString() {
-    return 'UserModel(uid: $uid, name: $name, email: $email, skillsToTeach: $skillsToTeach, skillsToLearn: $skillsToLearn, rating: $rating)';
-  }
-
-  // Compare two UserModel objects
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    return other is UserModel && other.uid == uid;
-  }
-
-  // Generate hash code (required when overriding ==)
-  @override
-  int get hashCode => uid.hashCode;
 }

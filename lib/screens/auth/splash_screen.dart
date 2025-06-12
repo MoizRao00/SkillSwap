@@ -2,10 +2,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:skillswap/screens/auth/auth_screen.dart';
 
 // Screens to navigate
 import '../home/home_screen.dart';
-import 'login_screen.dart';
+
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -38,7 +39,7 @@ class _SplashScreenState extends State<SplashScreen> {
       // agar user login nahi hai
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute(builder: (_) => const AuthScreen()),
       );
     }
   }

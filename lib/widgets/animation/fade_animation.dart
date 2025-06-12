@@ -1,4 +1,3 @@
-// lib/widgets/animations/fade_animation.dart
 
 import 'package:flutter/material.dart';
 

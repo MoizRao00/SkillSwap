@@ -12,7 +12,20 @@
           "package_name": "com.example.skillswap"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "125805120584-7mlvuiph14fhfsct4nap5gp3mp67ac5l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.skillswap",
+            "certificate_hash": "572796162f8150c6e8f1947257927a43cf59ad02"
+          }
+        },
+        {
+          "client_id": "125805120584-c66inqridqt6nbu29vl456flffmsfhl2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyA8NkdM-DeJnvx88bhtXbrv6oHJl0uHytI"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "125805120584-c66inqridqt6nbu29vl456flffmsfhl2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

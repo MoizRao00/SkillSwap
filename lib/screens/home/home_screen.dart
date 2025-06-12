@@ -75,9 +75,26 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar:
-      AppBar(
-        title: const Text('SkillSwap'),
+      appBar: AppBar(
+        title: const Text(
+          'SkillSwap',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 24,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Colors.white,
+        elevation: 8.0,
+        shadowColor: Colors.black.withOpacity(0.5),
+
+        // --- Shape Enhancement ---
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            bottom: Radius.circular(20), // Rounded bottom corners
+          ),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.search),

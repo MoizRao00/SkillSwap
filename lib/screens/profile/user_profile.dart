@@ -21,9 +21,11 @@ class UserProfileScreen extends StatelessWidget {
         slivers: [
           // Sliver App Bar with profile picture and basic info
           SliverAppBar(
-            expandedHeight: 200,
+            expandedHeight: 250, // Increased height for more space
             pinned: true,
-            flexibleSpace: FlexibleSpaceBar(background: _buildHeader()),
+            flexibleSpace: FlexibleSpaceBar(
+              background: _buildHeader(context),
+            ), // Pass context
           ),
           // Profile Content
           SliverToBoxAdapter(
@@ -60,58 +62,105 @@ class UserProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  // MODIFIED _buildHeader method
+  Widget _buildHeader(BuildContext context) {
+    // context is now passed
     return Stack(
       fit: StackFit.expand,
       children: [
         // Background gradient
         Container(
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(25),
+              bottomRight: Radius.circular(25),
+            ),
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Colors.blue.shade700, Colors.blue.shade500],
+              colors: [Color(0xFF4ED7F1), Color(0xFF6FE6FC)],
             ),
           ),
         ),
 
-        // Profile picture and name
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundImage: user.profilePicUrl != null
-                  ? NetworkImage(user.profilePicUrl!)
-                  : null,
-              child: user.profilePicUrl == null
-                  ? const Icon(Icons.person, size: 50)
-                  : null,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              user.name,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (user.location != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.location_on, color: Colors.white, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    user.location!,
-                    style: const TextStyle(color: Colors.white),
+        // Profile picture and name positioned at the bottom
+        Align(
+          // Use Align to position the content precisely
+          alignment: Alignment.bottomCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(
+              bottom: 24.0,
+            ), // Adjust this value to move it lower/higher
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // Take minimum space needed
+              children: [
+                // Rectangular border around a Circular Avatar
+                Container(
+                  width: 110, // Width of the rectangular container/border
+                  height: 110, // Height of the rectangular container/border
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(
+                      0.2,
+                    ), // Light background for the border container
+                    borderRadius: BorderRadius.circular(
+                      60.0,
+                    ), // Rounded corners for the rectangular container
+                    border: Border.all(
+                      color: Colors.white.withOpacity(
+                        0.7,
+                      ), // Color of the border
+                      width: 2.0, // Width of the border
+                    ),
+                  ),
+                  child: Center(
+                    // Center the CircleAvatar inside the rectangular container
+                    child: CircleAvatar(
+                      radius: 50, // Radius of the circular avatar itself
+                      backgroundColor: Theme.of(context).colorScheme.primary
+                          .withOpacity(0.1), // Placeholder background
+                      backgroundImage: user.profilePicUrl != null
+                          ? NetworkImage(user.profilePicUrl!)
+                          : null,
+                      child: user.profilePicUrl == null
+                          ? Icon(
+                              Icons.person,
+                              size: 50,
+                              color: Theme.of(context).colorScheme.primary,
+                            ) // Icon for placeholder
+                          : null,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  user.name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                if (user.location != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        user.location!,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ],
                   ),
                 ],
-              ),
-            ],
-          ],
+              ],
+            ),
+          ),
         ),
       ],
     );

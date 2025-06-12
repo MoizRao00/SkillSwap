@@ -65,39 +65,68 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   // Add this method to handle image selection
 
+  // In _EditProfileScreenState class
   Future<void> _updateProfilePicture(bool fromCamera) async {
     try {
+      print('Attempting to pick image...');
       final image = await _imageService.pickImage(fromCamera);
-      if (image != null && _currentUser != null) {
-        setState(() => _isLoading = true);
 
-        // Upload image and get URL
-        final imageUrl = await _imageService.uploadProfilePicture(
-          _currentUser!.uid,
-          image,
-        );
-
-        if (imageUrl != null) {
-          // Update user model with new image URL
-          final updatedUser = _currentUser!.copyWith(
-            profilePicUrl: imageUrl,
-            lastActive: DateTime.now(),
+      if (image == null) {
+        print('Image picking cancelled or failed (image is null).');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image selection cancelled or failed.')),
           );
-
-          await _fs.saveUser(updatedUser);
-
-          setState(() {
-            _currentUser = updatedUser;
-          });
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Profile picture updated!')),
-            );
-          }
         }
+        return; // Exit if no image was picked
+      }
+      print('Image picked successfully: ${image.path}'); // Confirm image path
+
+      setState(() => _isLoading = true); // Start loading indicator
+
+      print('Attempting to upload image...');
+      // Ensure _currentUser is not null before accessing its uid
+      if (_currentUser?.uid == null) {
+        print('Error: current user UID is null. Cannot upload.');
+        throw Exception("User not logged in or UID not available for upload.");
+      }
+      final imageUrl = await _imageService.uploadProfilePicture(
+        _currentUser!.uid,
+        image,
+      );
+
+      if (imageUrl == null) {
+        print('Image upload returned null URL.'); // Confirm if URL is null
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to get image download URL.')),
+          );
+        }
+        return; // Exit if upload failed to get URL
+      }
+      print('Image URL obtained: $imageUrl'); // Confirm URL obtained
+
+      // Update user model with new image URL
+      final updatedUser = _currentUser!.copyWith(
+        profilePicUrl: imageUrl,
+        lastActive: DateTime.now(),
+      );
+
+      print('Attempting to save user data to Firestore...');
+      await _fs.saveUser(updatedUser);
+      print('User data saved to Firestore.'); // Confirm Firestore update
+
+      setState(() {
+        _currentUser = updatedUser;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture updated!')),
+        );
       }
     } catch (e) {
+      print('Final catch block error: $e'); // Catch any error that bubbles up
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating profile picture: $e')),
@@ -106,6 +135,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
+        print('Loading finished.'); // Indicate end of loading state
       }
     }
   }

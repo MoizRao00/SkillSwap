@@ -5,8 +5,6 @@ import '../../models/exchange_request.dart';
 import '../../models/chat_message.dart';
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
-import '../../widgets/animation/fade_animation.dart';
-import '../../widgets/animation/slide_animation.dart';
 
 
 class ChatScreen extends StatefulWidget {

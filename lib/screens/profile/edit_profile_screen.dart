@@ -1,3 +1,4 @@
+// lib/screens/profile/edit_profile_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,12 +28,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   UserModel? _currentUser;
 
+  // NEW: State variables to hold the current skills being edited
+  List<String> _currentSkillsToTeach = [];
+  List<String> _currentSkillsToLearn = [];
+
+
   @override
   void initState() {
     super.initState();
-    _loadCurrentUser();
+    _loadCurrentUser(); // This will populate _currentUser and the controllers
   }
-  // Update the camera icon button to show options
 
   void _showImageSourceDialog() {
     showModalBottomSheet(
@@ -63,9 +68,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  // Add this method to handle image selection
-
-  // In _EditProfileScreenState class
   Future<void> _updateProfilePicture(bool fromCamera) async {
     try {
       print('Attempting to pick image...');
@@ -107,17 +109,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       print('Image URL obtained: $imageUrl'); // Confirm URL obtained
 
       // Update user model with new image URL
+      // Make sure to pass existing values for skills as they are not being edited here
       final updatedUser = _currentUser!.copyWith(
         profilePicUrl: imageUrl,
         lastActive: DateTime.now(),
+        // IMPORTANT: Ensure skills are also passed to copyWith
+        skillsToTeach: _currentSkillsToTeach, // Pass the current state of skills
+        skillsToLearn: _currentSkillsToLearn, // Pass the current state of skills
       );
 
       print('Attempting to save user data to Firestore...');
-      await _fs.saveUser(updatedUser);
+      await _fs.saveUser(updatedUser); // This saveUser will now trigger an update
       print('User data saved to Firestore.'); // Confirm Firestore update
 
       setState(() {
-        _currentUser = updatedUser;
+        _currentUser = updatedUser; // Update the local state
       });
 
       if (mounted) {
@@ -151,6 +157,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _bioController.text = userData.bio ?? '';
           _locationController.text = userData.location ?? '';
           _phoneController.text = userData.phone ?? '';
+          // NEW: Initialize local skill lists from loaded user data
+          _currentSkillsToTeach = List.from(userData.skillsToTeach);
+          _currentSkillsToLearn = List.from(userData.skillsToLearn);
         });
       }
     }
@@ -164,23 +173,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null && _currentUser != null) {
-        // Create updated user model
+        // Create updated user model from current UI state
+        // NEW: Include the skills from the local state (_currentSkillsToTeach, _currentSkillsToLearn)
         final updatedUser = _currentUser!.copyWith(
           name: _nameController.text.trim(),
-          bio: _bioController.text.trim(),
-          location: _locationController.text.trim(),
-          phone: _phoneController.text.trim(),
+          bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(), // Handle empty string to null
+          location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(), // Handle empty string to null
+          phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(), // Handle empty string to null
+          skillsToTeach: _currentSkillsToTeach, // THIS IS THE KEY CHANGE!
+          skillsToLearn: _currentSkillsToLearn, // THIS IS THE KEY CHANGE!
           lastActive: DateTime.now(),
+          isAvailable: _currentUser!.isAvailable, // Ensure availability is preserved
         );
 
-        // Save to Firestore
+        // Save to Firestore. Assuming _fs.saveUser handles both create and update
+        // and correctly converts UserModel to a Map for Firestore.
         await _fs.saveUser(updatedUser);
+
+        // Update the local _currentUser state to reflect the saved changes
+        setState(() {
+          _currentUser = updatedUser;
+        });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Profile updated successfully!')),
           );
-          Navigator.pop(context);
+          Navigator.pop(context); // Pop back to the previous screen
         }
       }
     } catch (e) {
@@ -306,13 +325,37 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ElevatedButton.icon(
                 icon: const Icon(Icons.psychology),
                 label: const Text('Manage Skills'),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SkillManagementScreen(),
-                    ),
-                  );
+                onPressed: () async { // Make onPressed async to await result
+                  if (_currentUser != null) {
+                    // NEW: Pass current skills to SkillManagementScreen and await for updated ones
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SkillManagementScreen(
+                          initialSkillsToTeach: _currentSkillsToTeach,
+                          initialSkillsToLearn: _currentSkillsToLearn,
+                        ),
+                      ),
+                    );
+
+                    // NEW: If SkillManagementScreen returns updated lists
+                    if (result != null && result is Map<String, List<String>>) {
+                      setState(() {
+                        _currentSkillsToTeach = result['skillsToTeach'] ?? [];
+                        _currentSkillsToLearn = result['skillsToLearn'] ?? [];
+                        // NEW: IMPORTANT: Update _currentUser directly so it's consistent for saving
+                        // This assumes UserModel has copyWith for these lists
+                        _currentUser = _currentUser!.copyWith(
+                          skillsToTeach: _currentSkillsToTeach,
+                          skillsToLearn: _currentSkillsToLearn,
+                        );
+                      });
+                    }
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('User data not loaded yet.')),
+                    );
+                  }
                 },
               ),
             ],
@@ -352,5 +395,3 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 }
-
-

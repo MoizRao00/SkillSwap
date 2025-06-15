@@ -165,6 +165,29 @@ class FirestoreService {
     }
   }
 
+  Future<void> createUserDocument(String uid, String name, String email) async {
+    final now = DateTime.now();
+    await _db.collection('users').doc(uid).set({
+      'uid': uid,
+      'name': name,
+      'email': email,
+      'profilePicUrl': null, // Default empty
+      'bio': '',             // Default empty
+      'phone': null,
+      'location': null,
+      'skillsToTeach': [],   // Default empty list
+      'skillsToLearn': [],   // Default empty list
+      'rating': 0.0,         // Default rating
+      'totalExchanges': 0,   // Default total exchanges
+      'reviews': [],         // Default empty list
+      'createdAt': now.toIso8601String(), // Store as ISO String
+      'lastActive': now.toIso8601String(), // Store as ISO String
+      'isAvailable': true,   // Default available
+      'isVerified': false,   // Default not verified
+      'portfolio': [],       // Default empty list
+    });
+  }
+
 
   //  Remove a skill by document ID (Your existing method - enhanced)
   Future<bool> removeUserSkill(String uid, String skillId,
@@ -261,10 +284,12 @@ class FirestoreService {
   // ================== HELPER METHODS ==================
 
   // Update user availability
-  Future<bool> updateAvailability(String uid, bool isAvailable) async {
-    return await updateUser(uid, {'isAvailable': isAvailable});
+  Future<void> updateAvailability(String uid, bool isAvailable) async {
+    await _db.collection('users').doc(uid).update({
+      'isAvailable': isAvailable,
+      'lastActive': DateTime.now().toIso8601String(), // Update last active
+    });
   }
-
   // Update user rating after skill exchange
   Future<bool> updateUserRating(String uid, double newRating,
       int totalExchanges)
@@ -304,10 +329,12 @@ class FirestoreService {
     }
   }
 
+
   // Add these methods to your FirestoreService class
 
   // Create new exchange request
-  Future<bool> createExchangeRequest({
+  Future<bool> createExchangeRequest(
+      {
     required String receiverId,
     required String senderSkill,
     required String receiverSkill,

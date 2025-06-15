@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/review_model.dart';
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/navigation_helper.dart';
 import '../../widgets/animation/fade_animation.dart';
 import '../../widgets/animation/slide_animation.dart';
-import '../exchange/exchange_request_screen.dart';
 
 class UserProfileScreen extends StatelessWidget {
   final UserModel user;

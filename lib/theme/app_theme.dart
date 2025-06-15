@@ -75,6 +75,8 @@ class AppTheme {
       elevation: 1,
     ),
 
+
+
     // Add bottom navigation bar theme
     bottomNavigationBarTheme: const BottomNavigationBarThemeData(
       selectedItemColor: primaryColor,

@@ -1,12 +1,10 @@
-// lib/screens/settings/settings_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:skillswap/utils/navigation_helper.dart';
 import '../../services/firestore_service.dart';
 import '../../models/usermodel.dart';
-import '../../widgets/animation/fade_animation.dart'; // Assuming you have these animation widgets
-import '../../widgets/animation/slide_animation.dart'; // Assuming you have these animation widgets
+import '../../widgets/animation/slide_animation.dart';
 
 class SettingsScreen extends StatelessWidget {
   final FirestoreService _fs = FirestoreService();

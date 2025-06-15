@@ -1,7 +1,6 @@
 // lib/screens/search/search_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/navigation_helper.dart';

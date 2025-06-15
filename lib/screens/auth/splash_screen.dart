@@ -29,6 +29,9 @@ class _SplashScreenState extends State<SplashScreen> {
     await Future.delayed(const Duration(seconds: 2)); // 2 sec splash dikhana
     User? user = _auth.currentUser; // current logged in user
 
+    if (!mounted) {
+      return;
+    }
     if (user != null) {
       // agar user logged in hai
       Navigator.pushReplacement(
@@ -46,11 +49,54 @@ class _SplashScreenState extends State<SplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text(
-          'SkillSwap',
-          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+    return Scaffold(
+      backgroundColor: Colors.white,
+      // Or use Theme.of(context).colorScheme.background
+      body: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // App icon/logo
+              Image.asset(
+                "assets/icon2.png",
+                width: 140,
+                height: 140,
+                fit: BoxFit
+                    .contain, // Keeps the image centered and not stretched
+              ),
+              const SizedBox(height: 24),
+
+              // App name
+              const Text(
+                'SkillSwap',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: Colors.black87,
+                ),
+              ),
+
+              // Optional tagline
+              const SizedBox(height: 8),
+              const Text(
+                'Exchange Skills, Grow Together',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+                textAlign: TextAlign.center,
+              ),
+
+              // Loading spinner
+              const SizedBox(height: 32),
+              const CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -2,9 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:skillswap/theme/app_theme.dart'; // Ensure this import is correct
 import '../../models/exchange_request.dart';
 import '../../services/firestore_service.dart';
-import '../../models/usermodel.dart';
 import '../../widgets/animation/fade_animation.dart';
 import '../../widgets/animation/slide_animation.dart';
 import '../chat/chat_screen.dart';
@@ -22,6 +22,9 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
     with SingleTickerProviderStateMixin {
   final FirestoreService _fs = FirestoreService();
   late TabController _tabController;
+  // We will get current user from FirebaseAuth.instance.currentUser directly in build.
+  // No need for a _currentUser state variable if only used for UID.
+
 
   @override
   void initState() {
@@ -45,77 +48,142 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
       );
     }
 
+    // Access theme colors for consistency
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color secondaryColor = Theme.of(context).colorScheme.secondary;
+    final Color onSecondaryColor = Theme.of(context).colorScheme.onSecondary;
+    final Color cardColor = Theme.of(context).cardTheme.color ?? Theme.of(context).cardColor;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Skill Exchanges'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: Column(
+        children: [
+
+          Container(
+
+            padding: const EdgeInsets.only(top: 5),// L,T,R,B
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: 8.0,
+              shadowColor: Colors.black.withOpacity(0.4),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              color: cardColor,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.inbox),
-                  const SizedBox(width: 8),
-                  const Text('Received'),
-                  StreamBuilder<List<ExchangeRequest>>(
-                    stream: _fs.getExchangeRequests(
-                      userId: currentUser.uid,
-                      isReceived: true,
-                    ),
-                    builder: (context, snapshot) {
-                      final pendingCount =
-                          snapshot.data
-                              ?.where((r) => r.status == ExchangeStatus.pending)
-                              .length ??
-                          0;
-                      if (pendingCount == 0) return const SizedBox();
-                      return Container(
-                        margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          pendingCount.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
+                  // Title section
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16.0, left: 16.0, right: 16.0, bottom: 8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Skill Exchanges',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            color: onSurfaceColor, // Text color on the card surface
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, thickness: 1, color: Colors.white), // Visual separator
+
+                  // TabBar Section
+                  TabBar(
+                    controller: _tabController,
+                    indicatorColor: primaryColor, // Indicator line below the selected tab
+                    labelColor: primaryColor, // Color for selected tab's icon/text
+                    unselectedLabelColor: onSurfaceColor.withOpacity(0.7), // Muted color for unselected tabs
+                    indicatorSize: TabBarIndicatorSize.tab, // Indicator covers the whole tab
+
+                    // Font styles for tabs
+                    labelStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.bold, // Make selected tab text bold
+                      fontSize: 15,
+                    ),
+                    unselectedLabelStyle: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.normal, // Normal weight for unselected
+                      fontSize: 14,
+                    ),
+                    tabs: [
+                      Tab(
+                        // Removed 'const' for dynamic theming
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.inbox, color: _tabController.index == 0 ? primaryColor : onSurfaceColor.withOpacity(0.7)),
+                            const SizedBox(width: 8),
+                            Text('Received', style: TextStyle(color: _tabController.index == 0 ? primaryColor : onSurfaceColor.withOpacity(0.7))),
+                            StreamBuilder<List<ExchangeRequest>>(
+                              stream: _fs.getExchangeRequests(
+                                userId: currentUser.uid,
+                                isReceived: true,
+                              ),
+                              builder: (context, snapshot) {
+                                final pendingCount =
+                                    snapshot.data
+                                        ?.where((r) => r.status == ExchangeStatus.pending)
+                                        .length ??
+                                        0;
+                                if (pendingCount == 0) return const SizedBox();
+                                return Container(
+                                  margin: const EdgeInsets.only(left: 8),
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: secondaryColor, // Use secondary color for badge
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    pendingCount.toString(),
+                                    style: TextStyle(
+                                      color: onSecondaryColor, // Text color on secondary background
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        // Removed 'const' for dynamic theming
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.outbox, color: _tabController.index == 1 ? primaryColor : onSurfaceColor.withOpacity(0.7)),
+                            const SizedBox(width: 8),
+                            Text('Sent', style: TextStyle(color: _tabController.index == 1 ? primaryColor : onSurfaceColor.withOpacity(0.7))),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            const Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.outbox),
-                  SizedBox(width: 8),
-                  Text('Sent'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _RequestsList(
-            userId: currentUser.uid,
-            isReceived: true,
-            firestoreService: _fs,
           ),
-          _RequestsList(
-            userId: currentUser.uid,
-            isReceived: false,
-            firestoreService: _fs,
+          // TabBarView takes the remaining space
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _RequestsList(
+                  userId: currentUser.uid,
+                  isReceived: true,
+                  firestoreService: _fs,
+                ),
+                _RequestsList(
+                  userId: currentUser.uid,
+                  isReceived: false,
+                  firestoreService: _fs,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -124,9 +192,7 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => const SearchScreen(),
-              ),
+              MaterialPageRoute(builder: (context) => const SearchScreen()),
             );
           },
           icon: const Icon(Icons.add),
@@ -136,6 +202,20 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
     );
   }
 }
+
+// _RequestsList and _ExchangeRequestCard classes remain unchanged from your provided code
+// You might want to update _ExchangeRequestCard to use theme colors for its status display (Colors.orange, green etc.)
+// For example:
+// Color _getStatusColor(BuildContext context) {
+//   switch (request.status) {
+//     case ExchangeStatus.pending: return Theme.of(context).colorScheme.tertiary; // Use a distinct color
+//     case ExchangeStatus.accepted: return Theme.of(context).colorScheme.primary;
+//     case ExchangeStatus.completed: return Theme.of(context).colorScheme.secondary;
+//     case ExchangeStatus.declined:
+//     case ExchangeStatus.cancelled: return Theme.of(context).colorScheme.error;
+//   }
+// }
+
 
 class _RequestsList extends StatefulWidget {
   final String userId;
@@ -199,7 +279,9 @@ class _RequestsListState extends State<_RequestsList> {
                   const SizedBox(height: 16),
                   Text(
                     'No ${widget.isReceived ? 'received' : 'sent'} requests',
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -209,7 +291,9 @@ class _RequestsListState extends State<_RequestsList> {
                     textAlign: TextAlign.center,
                     style: Theme.of(
                       context,
-                    ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                    ).textTheme.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    ),
                   ),
                 ],
               ),
@@ -251,8 +335,18 @@ class _ExchangeRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Access theme colors in build method for use in sub-widgets
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+    final Color tertiaryColor = Theme.of(context).colorScheme.tertiary ?? Colors.orange; // Fallback for tertiary
+    final Color errorColor = Theme.of(context).colorScheme.error;
+
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
+      // Card properties are typically handled by CardThemeData in app_theme.dart
+      // If you need specific overrides, you can apply them here.
       child: InkWell(
         onTap: () async {
           if (request.status == ExchangeStatus.accepted) {
@@ -276,97 +370,105 @@ class _ExchangeRequestCard extends StatelessWidget {
             _buildBody(context),
             if (request.status == ExchangeStatus.pending && isReceived)
               _buildActions(context),
-            if (request.status == ExchangeStatus.accepted)  // Add this line
-              _buildChatButton(context),                    // Add this line
+            if (request.status == ExchangeStatus.accepted)
+              _buildChatButton(context),
           ],
         ),
       ),
     );
   }
+
   Widget _buildChatButton(BuildContext context) {
-    if (request.status == ExchangeStatus.accepted) {
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Complete/Cancel buttons
-            Expanded(
-              child: Row(
-                children: [
-                  TextButton(
-                    onPressed: () async {
-                      await firestoreService.updateExchangeStatus(
-                        request.id,
-                        ExchangeStatus.cancelled,
-                      );
-                    },
-                    child: const Text('Cancel'),
+    // Use theme colors for buttons
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    await firestoreService.updateExchangeStatus(
+                      request.id,
+                      ExchangeStatus.cancelled,
+                    );
+                  },
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: Theme.of(context).colorScheme.error), // Use error color for cancel
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () async {
-                      await firestoreService.updateExchangeStatus(
-                        request.id,
-                        ExchangeStatus.completed,
-                      );
-                    },
-                    child: const Text('Complete'),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () async {
+                    await firestoreService.updateExchangeStatus(
+                      request.id,
+                      ExchangeStatus.completed,
+                    );
+                  },
+                  // Button style will come from ElevatedButtonThemeData in AppTheme
+                  child: const Text('Complete'),
+                ),
+              ],
             ),
-            // Chat button
-            ElevatedButton.icon(
-              icon: const Icon(Icons.chat),
-              label: const Text('Chat'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Theme.of(context).primaryColor,
-              ),
-              onPressed: () async {
-                final otherUser = await firestoreService.getUser(
-                  isReceived ? request.senderId : request.receiverId,
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.chat),
+            label: const Text('Chat'),
+            // Button style will come from ElevatedButtonThemeData in AppTheme
+            // If you want a specific color just for chat, override it here
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            ),
+            onPressed: () async {
+              final otherUser = await firestoreService.getUser(
+                isReceived ? request.senderId : request.receiverId,
+              );
+              if (otherUser != null && context.mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        ChatScreen(exchange: request, otherUser: otherUser),
+                  ),
                 );
-                if (otherUser != null && context.mounted) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ChatScreen(exchange: request, otherUser: otherUser),
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
-        ),
-      );
-    }
-    return const SizedBox.shrink();
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHeader(BuildContext context) {
+    // Use theme colors for status header
+    final Color statusColor = _getStatusColor(context);
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _getStatusColor().withOpacity(0.1),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        color: statusColor.withOpacity(0.1),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), // Retain top rounded corners for card
       ),
       child: Row(
         children: [
-          Icon(_getStatusIcon(), color: _getStatusColor()),
+          Icon(_getStatusIcon(), color: statusColor),
           const SizedBox(width: 8),
           Text(
             request.status.toString().split('.').last.toUpperCase(),
             style: TextStyle(
-              color: _getStatusColor(),
+              color: statusColor,
               fontWeight: FontWeight.bold,
             ),
           ),
           const Spacer(),
           Text(
             _formatDate(request.createdAt),
-            style: Theme.of(context).textTheme.bodySmall,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withOpacity(0.7)),
           ),
         ],
       ),
@@ -374,6 +476,9 @@ class _ExchangeRequestCard extends StatelessWidget {
   }
 
   Widget _buildBody(BuildContext context) {
+    // Use onSurface color for general text on card body
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -387,27 +492,27 @@ class _ExchangeRequestCard extends StatelessWidget {
                   children: [
                     Text(
                       isReceived ? 'They\'ll teach:' : 'You\'ll teach:',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withOpacity(0.7)),
                     ),
                     Text(
                       request.senderSkill,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: onSurfaceColor),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.swap_horiz),
+              Icon(Icons.swap_horiz, color: onSurfaceColor.withOpacity(0.7)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       isReceived ? 'You\'ll teach:' : 'They\'ll teach:',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withOpacity(0.7)),
                     ),
                     Text(
                       request.receiverSkill,
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(color: onSurfaceColor),
                       textAlign: TextAlign.end,
                     ),
                   ],
@@ -417,26 +522,26 @@ class _ExchangeRequestCard extends StatelessWidget {
           ),
           if (request.message.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Message:', style: Theme.of(context).textTheme.titleSmall),
+            Text('Message:', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onSurfaceColor.withOpacity(0.8))),
             const SizedBox(height: 4),
-            Text(request.message),
+            Text(request.message, style: TextStyle(color: onSurfaceColor)),
           ],
           if (request.location != null || request.scheduledDate != null) ...[
             const SizedBox(height: 16),
             if (request.location != null)
               Row(
                 children: [
-                  const Icon(Icons.location_on, size: 16),
+                  Icon(Icons.location_on, size: 16, color: onSurfaceColor.withOpacity(0.7)),
                   const SizedBox(width: 4),
-                  Text(request.location!),
+                  Text(request.location!, style: TextStyle(color: onSurfaceColor)),
                 ],
               ),
             if (request.scheduledDate != null)
               Row(
                 children: [
-                  const Icon(Icons.calendar_today, size: 16),
+                  Icon(Icons.calendar_today, size: 16, color: onSurfaceColor.withOpacity(0.7)),
                   const SizedBox(width: 4),
-                  Text(_formatDate(request.scheduledDate!)),
+                  Text(_formatDate(request.scheduledDate!), style: TextStyle(color: onSurfaceColor)),
                 ],
               ),
           ],
@@ -458,7 +563,10 @@ class _ExchangeRequestCard extends StatelessWidget {
                 ExchangeStatus.declined,
               );
             },
-            child: const Text('Decline'),
+            child: Text(
+              'Decline',
+              style: TextStyle(color: Theme.of(context).colorScheme.error), // Use error color for decline
+            ),
           ),
           const SizedBox(width: 8),
           ElevatedButton(
@@ -468,6 +576,7 @@ class _ExchangeRequestCard extends StatelessWidget {
                 ExchangeStatus.accepted,
               );
             },
+            // Button style will come from ElevatedButtonThemeData in AppTheme
             child: const Text('Accept'),
           ),
         ],
@@ -475,17 +584,18 @@ class _ExchangeRequestCard extends StatelessWidget {
     );
   }
 
-  Color _getStatusColor() {
+  // Modified to accept BuildContext to use theme colors
+  Color _getStatusColor(BuildContext context) {
     switch (request.status) {
       case ExchangeStatus.pending:
-        return Colors.orange;
+        return Theme.of(context).colorScheme.tertiary ?? Colors.orange; // Use tertiary if defined, else orange
       case ExchangeStatus.accepted:
-        return Colors.green;
+        return Theme.of(context).colorScheme.primary;
       case ExchangeStatus.completed:
-        return Colors.blue;
+        return Theme.of(context).colorScheme.secondary;
       case ExchangeStatus.declined:
       case ExchangeStatus.cancelled:
-        return Colors.red;
+        return Theme.of(context).colorScheme.error;
     }
   }
 

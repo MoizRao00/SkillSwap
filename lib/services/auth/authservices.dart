@@ -1,13 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import '../../models/app_user.dart';
 import '../firestore_service.dart';
 
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirestoreService _firestoreService = FirestoreService();
+  FirestoreService get firestoreService => _firestoreService;
 
   Future<User?> signUp(String name, String email, String password) async {
     try {
@@ -18,16 +17,8 @@ class AuthService {
       User? user = result.user;
 
       if (user != null) {
-        // 👇 Yahan sab fields save ho rahe hain signup ke waqt
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({
-          'uid': user.uid,         // user ka unique ID
-          'name': name,            // user ka naam
-          'email': email,          // AB email bhi yahan save!
-          'bio': '',               // initial bio blank
-        });
+        // Use the centralized method to create the user document
+        await _firestoreService.createUserDocument(user.uid, name, email);
       }
       return user;
     } catch (e) {
@@ -42,11 +33,14 @@ class AuthService {
   Future<User?> login(String email, String password) async {
     try {
       UserCredential result =
-      await _auth.signInWithEmailAndPassword(email: email, password: password);  // Login Firebase se
-      return result.user;                            // User return karta hai agar login successful ho
-    } catch (e) {
-      print('Login Error: $e');
-      return null;
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      return result.user;
+    } on FirebaseAuthException catch (e) { // <--- Catch the FirebaseAuthException
+      print('Login Error (AuthService): ${e.code} - ${e.message}'); // Log for debugging
+      rethrow; // <--- CRITICAL: RE-THROW THE EXCEPTION
+    } catch (e) { // Catch any other unexpected non-Firebase Auth exceptions
+      print('Login Error (AuthService - General): $e');
+      rethrow; // Re-throw general exceptions too, or handle differently if preferred
     }
   }
 

@@ -1,6 +1,6 @@
-// In lib/models/usermodel.dart
+// lib/models/usermodel.dart
 
-import 'package:skillswap/models/potfolio_item.dart';
+import 'package:skillswap/models/potfolio_item.dart'; // Make sure this path is correct
 
 class UserModel {
   final String uid;
@@ -11,15 +11,14 @@ class UserModel {
   final String? phone;
   final String? location;
   final List<String> skillsToTeach;
-  final List<String> skillsToLearn;
+  final List<String>  skillsToLearn;
   final double rating;
   final int totalExchanges;
   final List<String> reviews;
-  final DateTime createdAt;
-  final DateTime lastActive;
+  final DateTime createdAt; // This is now non-nullable, so it needs a default or safe parsing
+  final DateTime lastActive; // This is now non-nullable, so it needs a default or safe parsing
   final bool isAvailable;
   final bool isVerified;
-  // Add this new field
   final List<PortfolioItem> portfolio;
 
   UserModel({
@@ -35,14 +34,14 @@ class UserModel {
     this.rating = 0.0,
     this.totalExchanges = 0,
     this.reviews = const [],
-    required this.createdAt,
-    required this.lastActive,
+    required this.createdAt, // Still required in constructor, but fromMap handles defaults
+    required this.lastActive, // Still required in constructor, but fromMap handles defaults
     this.isAvailable = true,
     this.isVerified = false,
-    this.portfolio = const [], // Add this
+    this.portfolio = const [],
   });
 
-  // Update toMap method
+  // Update toMap method (no change here, but included for context)
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -57,16 +56,33 @@ class UserModel {
       'rating': rating,
       'totalExchanges': totalExchanges,
       'reviews': reviews,
-      'createdAt': createdAt.toIso8601String(),
-      'lastActive': lastActive.toIso8601String(),
+      'createdAt': createdAt.toIso8601String(), // Saving as string
+      'lastActive': lastActive.toIso8601String(), // Saving as string
       'isAvailable': isAvailable,
       'isVerified': isVerified,
-      'portfolio': portfolio.map((item) => item.toMap()).toList(), // Add this
+      'portfolio': portfolio.map((item) => item.toMap()).toList(),
     };
   }
 
   // Update fromMap factory
   factory UserModel.fromMap(Map<String, dynamic> map) {
+    // --- NEW HELPER FUNCTION FOR SAFE DATE/TIME PARSING ---
+    DateTime _parseDateTime(dynamic value) {
+      if (value is String) {
+        try {
+          return DateTime.parse(value);
+        } catch (e) {
+          // You can add more robust logging here if needed
+          print('Error parsing DateTime from Firestore: "$value" - $e');
+          // Fallback to current time if parsing fails
+          return DateTime.now();
+        }
+      }
+      // If value is not a string or is null, default to current time
+      return DateTime.now();
+    }
+    // --- END NEW HELPER FUNCTION ---
+
     return UserModel(
       uid: map['uid'] ?? '',
       email: map['email'] ?? '',
@@ -80,17 +96,17 @@ class UserModel {
       rating: (map['rating'] ?? 0.0).toDouble(),
       totalExchanges: map['totalExchanges'] ?? 0,
       reviews: List<String>.from(map['reviews'] ?? []),
-      createdAt: DateTime.parse(map['createdAt']),
-      lastActive: DateTime.parse(map['lastActive']),
+      createdAt: _parseDateTime(map['createdAt']), // <--- Use the helper here
+      lastActive: _parseDateTime(map['lastActive']), // <--- Use the helper here
       isAvailable: map['isAvailable'] ?? true,
       isVerified: map['isVerified'] ?? false,
       portfolio: (map['portfolio'] as List<dynamic>?)
-          ?.map((item) => PortfolioItem.fromMap(item))
-          .toList() ?? [], // Add this
+          ?.map((item) => PortfolioItem.fromMap(item as Map<String, dynamic>)) // Ensure cast to Map<String, dynamic>
+          .toList() ?? [],
     );
   }
 
-  // Update copyWith method
+  // Update copyWith method (no change here, but included for context)
   UserModel copyWith({
     String? uid,
     String? email,
@@ -108,7 +124,7 @@ class UserModel {
     DateTime? lastActive,
     bool? isAvailable,
     bool? isVerified,
-    List<PortfolioItem>? portfolio, // Add this
+    List<PortfolioItem>? portfolio,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -127,7 +143,7 @@ class UserModel {
       lastActive: lastActive ?? this.lastActive,
       isAvailable: isAvailable ?? this.isAvailable,
       isVerified: isVerified ?? this.isVerified,
-      portfolio: portfolio ?? this.portfolio, // Add this
+      portfolio: portfolio ?? this.portfolio,
     );
   }
 }

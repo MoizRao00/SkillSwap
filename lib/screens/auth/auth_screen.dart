@@ -1,8 +1,14 @@
+// lib/screens/auth/auth_screen.dart
+
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../../services/auth/authservices.dart';
+// No direct import of app_theme.dart is needed here.
+// We will use Theme.of(context) to access the colors dynamically.
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -22,12 +28,11 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
   late Animation<double> _fadeAnimation;
 
   bool _rememberMe = false;
+  bool _passwordVisible = false; // State for password visibility
 
-  // Corrected: Single declaration of FirebaseAuth instance
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  // Initialize GoogleSignIn instance
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-
+  final AuthService _authService = AuthService(); // Ensure this is declared
 
   @override
   void initState() {
@@ -42,6 +47,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     _animationController.forward();
 
     _loadRememberMePreference();
+    _passwordVisible = false; // Initialize password as hidden
   }
 
   Future<void> _loadRememberMePreference() async {
@@ -60,6 +66,25 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     super.dispose();
   }
 
+  // --- Helper to show SnackBar messages ---
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          textAlign: TextAlign.center,
+        ),
+        backgroundColor: Colors.redAccent,
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(10),
+      ),
+    );
+  }
+
   // --- Login and Signup Methods ---
   Future<void> _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
@@ -68,50 +93,67 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
 
     try {
       if (_isLogin) {
-        // Login with Email/Password
-        await _auth.signInWithEmailAndPassword( // Use _auth instance
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+        await _authService.login(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
         );
-        // After successful login, save the "Remember Me" preference
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('rememberMe', _rememberMe);
         print('Remember Me preference saved: $_rememberMe');
 
       } else {
-        // Sign up with Email/Password
-        final userCredential = await _auth.createUserWithEmailAndPassword( // Use _auth instance
-          email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+        await _authService.signUp(
+          _nameController.text.trim(),
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
         );
-
-        // Update display name
-        await userCredential.user?.updateDisplayName(_nameController.text.trim());
       }
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        String message;
-        if (e.code == 'user-not-found') {
-          message = 'No user found for that email.';
-        } else if (e.code == 'wrong-password') {
-          message = 'Wrong password provided for that user.';
-        } else if (e.code == 'email-already-in-use') {
-          message = 'The account already exists for that email.';
-        } else if (e.code == 'weak-password') {
-          message = 'The password provided is too weak.';
-        } else {
-          message = 'An authentication error occurred: ${e.message}';
+      String message;
+      if (_isLogin) {
+        switch (e.code) {
+          case 'user-not-found':
+            message = 'No account found with this email. Please check your email or sign up.';
+            break;
+          case 'wrong-password':
+          case 'invalid-credential':
+            message = 'Incorrect password or invalid email. Please try again.';
+            break;
+          case 'invalid-email':
+            message = 'The email address is not valid. Please check the format.';
+            break;
+          case 'user-disabled':
+            message = 'This account has been disabled. Please contact support.';
+            break;
+          case 'too-many-requests':
+            message = 'Too many failed attempts. Please try again later.';
+            break;
+          default:
+            message = 'Login failed. An unexpected error occurred. Please try again.';
+            break;
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
+      } else { // Handling errors specifically for SIGN UP
+        switch (e.code) {
+          case 'email-already-in-use':
+            message = 'This email is already registered. Please login or use a different email.';
+            break;
+          case 'weak-password':
+            message = 'The password is too weak. Please choose a stronger one (min 6 characters).';
+            break;
+          case 'invalid-email':
+            message = 'The email address is not valid. Please check the format.';
+            break;
+          case 'too-many-requests':
+            message = 'Too many signup attempts. Please try again later.';
+            break;
+          default:
+            message = 'Sign Up failed. An unexpected error occurred. Please try again.';
+            break;
+        }
       }
+      _showErrorSnackBar(message);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('An unexpected error occurred: $e')),
-        );
-      }
+      _showErrorSnackBar('An unexpected error occurred: ${e.toString()}. Please try again.');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -121,75 +163,110 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
 
   // --- Google Sign-In Method ---
   Future<void> _signInWithGoogle() async {
-    setState(() => _isLoading = true); // Show loading
+    setState(() => _isLoading = true);
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        // User cancelled the sign-in
         print("Google login cancelled");
+        _showErrorSnackBar('Google sign-in was cancelled.');
         return;
       }
 
-
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      await _auth.signInWithCredential(credential); // Use _auth instance
+      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      User? user = userCredential.user;
+
+      if (user != null) {
+        final userDoc = await _authService.firestoreService.getUserStream(user.uid).first;
+
+        if (userDoc == null) {
+          await _authService.firestoreService.createUserDocument(
+            user.uid,
+            googleUser.displayName ?? googleUser.email.split('@')[0],
+            googleUser.email,
+          );
+        } else {
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+            'lastActive': DateTime.now().toIso8601String(),
+          });
+        }
+      }
+
       print("Google login successful!");
-      // No explicit navigation here, as App() handles based on authStateChanges
     } on FirebaseAuthException catch (e) {
       print("Firebase Auth error during Google sign-in: ${e.message}");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google Sign-In Error: ${e.message}')),
-        );
+      String message;
+      switch (e.code) {
+        case 'account-exists-with-different-credential':
+          message = 'An account with this email already exists. Try logging in with a different method.';
+          break;
+        case 'invalid-credential':
+          message = 'The provided Google credentials are invalid.';
+          break;
+        case 'operation-not-allowed':
+          message = 'Google sign-in is not enabled for this project. Please contact support.';
+          break;
+        case 'too-many-requests':
+          message = 'Too many Google sign-in attempts. Please try again later.';
+          break;
+        default:
+          message = 'Google Sign-In failed. An unexpected error occurred: ${e.message ?? 'Unknown error'}.';
+          break;
       }
+      _showErrorSnackBar(message);
     } catch (e) {
       print("Error during Google sign-in: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to sign in with Google: $e')),
-        );
-      }
+      _showErrorSnackBar('Failed to sign in with Google: ${e.toString()}. Please try again.');
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false); // Hide loading
+        setState(() => _isLoading = false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Access theme colors here
+    final Color primaryColor = Theme.of(context).colorScheme.primary;
+    final Color secondaryColor = Theme.of(context).colorScheme.secondary;
+    final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface; // Text color on cards/surfaces
+    final Color cardColor = Theme.of(context).cardTheme.color ?? Theme.of(context).cardColor; // Get card background color
+
     return Scaffold(
       body: Stack(
         children: [
           // Background gradient
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topRight,
                 end: Alignment.bottomLeft,
+                // Use theme colors for the gradient
                 colors: [
-                  Color(0xFF00CAFF), // Corrected Color syntax
-                  Colors.white
+                  primaryColor.withOpacity(0.9), // Start with a slightly opaque primary
+                  secondaryColor.withOpacity(0.8), // End with a slightly opaque secondary
+                  // For a softer look, you might fade to background or a lighter shade
+                  // Theme.of(context).colorScheme.background, // Or fade to background color
                 ],
               ),
             ),
           ),
           // Content
           SafeArea(
-            child: SingleChildScrollView(
-
+            child: SingleChildScrollView( // Added SingleChildScrollView to prevent overflow on small screens/keyboard
               padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 20),
                   Card(
+                    // Use theme's card color, or fallback to default
+                    color: cardColor,
                     elevation: 8,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
@@ -199,6 +276,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                       child:
                       Column(
                         children: [
+                          // Ensure asset path is correct, consider sizing with MediaQuery
                           Image.asset(
                             "assets/icon2.png",
                             width: 200,
@@ -208,7 +286,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                             'SkillSwap',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                              color: Colors.black,
+                              color: onSurfaceColor, // Use onSurface for text on colored cards/backgrounds
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -218,7 +296,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                             'Exchange Skills, Grow Together',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.black,
+                              color: onSurfaceColor.withOpacity(0.7), // Slightly muted color
                             ),
                           ),
                           const SizedBox(height: 8,),
@@ -236,10 +314,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                       controller: _nameController,
                                       decoration: InputDecoration(
                                         labelText: 'Name',
-                                        prefixIcon: const Icon(Icons.person),
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                        ),
+                                        prefixIcon: Icon(Icons.person, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)), // Themed icon color
+                                        // Border and other properties come from InputDecorationTheme
                                       ),
                                       validator: (value) {
                                         if (!_isLogin &&
@@ -257,10 +333,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   controller: _emailController,
                                   decoration: InputDecoration(
                                     labelText: 'Email',
-                                    prefixIcon: const Icon(Icons.email),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                                    prefixIcon: Icon(Icons.email, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)), // Themed icon color
+                                    // Border and other properties come from InputDecorationTheme
                                   ),
                                   keyboardType: TextInputType.emailAddress,
                                   validator: (value) {
@@ -274,17 +348,27 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                 ),
                                 const SizedBox(height: 16),
 
-                                // Password field
+                                // Password field with show/hide button
                                 TextFormField(
                                   controller: _passwordController,
+                                  obscureText: !_passwordVisible,
                                   decoration: InputDecoration(
                                     labelText: 'Password',
-                                    prefixIcon: const Icon(Icons.lock),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                                    prefixIcon: Icon(Icons.lock, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6)), // Themed icon color
+                                    suffixIcon: IconButton(
+                                      icon: Icon(
+                                        _passwordVisible
+                                            ? Icons.visibility
+                                            : Icons.visibility_off,
+                                        color: Theme.of(context).colorScheme.primary, // Themed icon color
+                                      ),
+                                      onPressed: () {
+                                        setState(() {
+                                          _passwordVisible = !_passwordVisible;
+                                        });
+                                      },
                                     ),
                                   ),
-                                  obscureText: true,
                                   validator: (value) {
                                     if (value == null || value.length < 6) {
                                       return 'Password must be at least 6 characters';
@@ -292,12 +376,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     return null;
                                   },
                                 ),
-                                const SizedBox(height: 16), // Spacing before Remember Me
+                                const SizedBox(height: 16),
 
                                 // Remember Me checkbox (only for Login mode)
                                 if (_isLogin)
                                   CheckboxListTile(
-                                    title: const Text("Remember Me"),
+                                    title: Text(
+                                      "Remember Me",
+                                      style: TextStyle(color: onSurfaceColor.withOpacity(0.8)), // Themed text color
+                                    ),
                                     value: _rememberMe,
                                     onChanged: (bool? newValue) {
                                       setState(() {
@@ -306,27 +393,22 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     },
                                     controlAffinity: ListTileControlAffinity.leading,
                                     contentPadding: EdgeInsets.zero,
+                                    activeColor: primaryColor, // Themed active color for checkbox
                                   ),
                                 if (_isLogin) const SizedBox(height: 8),
 
                                 const SizedBox(height: 24),
 
-                                // Main Email/Password Submit button
+                                // Main Email/Password Submit button (uses ElevatedButtonThemeData)
                                 ElevatedButton(
                                   onPressed: _isLoading ? null : _submitForm,
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
                                   child: _isLoading
                                       ? const SizedBox(
                                     height: 20,
                                     width: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white, // Ensure visibility on button
+                                      color: Colors.white, // Color set for contrast on button
                                     ),
                                   )
                                       : Text(_isLogin ? 'Login' : 'Sign Up'),
@@ -334,21 +416,21 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                 const SizedBox(height: 16),
 
                                 // "OR" separator
-                                const Text(
+                                Text(
                                   'OR',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(color: Colors.grey),
+                                  style: TextStyle(color: onSurfaceColor.withOpacity(0.6)), // Themed separator color
                                 ),
                                 const SizedBox(height: 16),
 
                                 // Google Login Button
                                 ElevatedButton.icon(
                                   onPressed: _isLoading ? null : _signInWithGoogle,
-                                  icon: const Icon(Icons.g_mobiledata), // Google icon
+                                  icon: const Icon(Icons.g_mobiledata),
                                   label: const Text('Login with Google'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red, // Google's brand color
-                                    foregroundColor: Colors.white,
+                                    backgroundColor: Colors.red, // Google's brand color, often kept fixed
+                                    foregroundColor: Colors.white, // Ensure text is white for contrast
                                     padding: const EdgeInsets.symmetric(vertical: 16),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
@@ -360,7 +442,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                 // Toggle button (Create Account / Already have an account)
                                 TextButton(
                                   onPressed: () {
-                                    if (_isLoading) return; // Prevent switching while loading
+                                    if (_isLoading) return;
                                     setState(() {
                                       _isLogin = !_isLogin;
                                       _animationController.reset();
@@ -368,13 +450,15 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                       _emailController.clear();
                                       _passwordController.clear();
                                       _nameController.clear();
-                                      _rememberMe = false; // Reset remember me on mode switch
+                                      _rememberMe = false;
+                                      _passwordVisible = false;
                                     });
                                   },
                                   child: Text(
                                     _isLogin
                                         ? 'Create new account'
                                         : 'Already have an account?',
+                                    style: TextStyle(color: Theme.of(context).colorScheme.primary), // Themed text button color
                                   ),
                                 ),
                               ],

@@ -22,13 +22,13 @@ class SettingsScreen extends StatelessWidget {
     }
 
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Consistent light background
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor, // Consistent light background
       appBar: AppBar(
         title: const Text('Settings'),
         backgroundColor: Theme.of(context).primaryColor, // Themed app bar
-        foregroundColor: Colors.white, // White text/icons
         elevation: 0, // Flat app bar
       ),
+
       body: StreamBuilder<UserModel?>(
         stream: _fs.getUserStream(currentUser.uid),
         builder: (context, snapshot) {

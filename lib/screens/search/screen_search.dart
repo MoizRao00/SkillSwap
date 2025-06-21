@@ -1,6 +1,7 @@
 // lib/screens/search/search_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Make sure this is imported for GeoPoint
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/navigation_helper.dart';
@@ -314,6 +315,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
     setState(() => _isLoading = true);
     try {
+      // NOTE: If searching by 'location', your searchUsers method will need
+      // to handle the query as a location string, possibly by performing
+      // a reverse geocoding or by comparing it with pre-stored location names.
+      // If your backend search is purely GeoPoint/geohash based, then
+      // 'location' search here implies searching by approximate string.
       _searchResults = await _fs.searchUsers(
         query: query,
         searchSkills: _selectedFilter == 'skills',
@@ -357,10 +363,10 @@ class _UserSearchCard extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundImage: user.profilePicUrl != null
-                        ? NetworkImage(user.profilePicUrl!)
+                    backgroundImage: user.profileImageUrl != null
+                        ? NetworkImage(user.profileImageUrl!)
                         : null,
-                    child: user.profilePicUrl == null
+                    child: user.profileImageUrl == null
                         ? const Icon(Icons.person)
                         : null,
                   ),
@@ -379,7 +385,13 @@ class _UserSearchCard extends StatelessWidget {
                             children: [
                               const Icon(Icons.location_on, size: 16),
                               const SizedBox(width: 4),
-                              Text(user.location!),
+                              Text(
+                                // Convert GeoPoint to a string for display
+                                // Using 4 decimal places for consistency
+                                'Lat: ${user.location!.latitude.toStringAsFixed(4)}, '
+                                    'Lng: ${user.location!.longitude.toStringAsFixed(4)}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             ],
                           ),
                         ],

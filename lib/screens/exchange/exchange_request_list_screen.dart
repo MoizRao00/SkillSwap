@@ -56,6 +56,7 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
     final Color onSecondaryColor = Theme.of(context).colorScheme.onSecondary;
     final Color cardColor = Theme.of(context).cardTheme.color ?? Theme.of(context).cardColor;
     return Scaffold(
+
       body: Column(
         children: [
 
@@ -202,20 +203,6 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
     );
   }
 }
-
-// _RequestsList and _ExchangeRequestCard classes remain unchanged from your provided code
-// You might want to update _ExchangeRequestCard to use theme colors for its status display (Colors.orange, green etc.)
-// For example:
-// Color _getStatusColor(BuildContext context) {
-//   switch (request.status) {
-//     case ExchangeStatus.pending: return Theme.of(context).colorScheme.tertiary; // Use a distinct color
-//     case ExchangeStatus.accepted: return Theme.of(context).colorScheme.primary;
-//     case ExchangeStatus.completed: return Theme.of(context).colorScheme.secondary;
-//     case ExchangeStatus.declined:
-//     case ExchangeStatus.cancelled: return Theme.of(context).colorScheme.error;
-//   }
-// }
-
 
 class _RequestsList extends StatefulWidget {
   final String userId;

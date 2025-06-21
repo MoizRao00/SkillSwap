@@ -3,16 +3,35 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Make sure this import is present for GeoPoint
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
+import '../../services/location_service.dart';
 import '../../utils/navigation_helper.dart';
 
-class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+class ProfileScreen extends StatefulWidget {
+  final UserModel currentUser;
+  const ProfileScreen({Key? key, required this.currentUser}) : super(key: key);
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+
+  late LocationService _locationService;
+
+  @override
+  void initState() {
+    super.initState();
+    _locationService = LocationService(); // Initialize the service
+  }
+  @override
   Widget build(BuildContext context) {
+
+    final GeoPoint? userLocation = widget.currentUser.location;
     final userId = FirebaseAuth.instance.currentUser?.uid;
+
     if (userId == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Profile')),
@@ -35,7 +54,11 @@ class ProfileScreen extends StatelessWidget {
           }
 
           return RefreshIndicator(
-            onRefresh: () async {},
+            onRefresh: () async {
+              // Since we're using a StreamBuilder, data will refresh automatically
+              // when the source changes. This delay just provides a visual cue.
+              await Future.delayed(const Duration(seconds: 1));
+            },
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -72,6 +95,9 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildProfileHeader(BuildContext context, UserModel user) {
+    // Define userLocation at a scope where it's accessible by FutureBuilder
+    final GeoPoint? userLocation = user.location; // <-- Define it here
+
     return Column(
       children: [
         const SizedBox(
@@ -82,15 +108,15 @@ class ProfileScreen extends StatelessWidget {
           backgroundColor: Theme.of(
             context,
           ).colorScheme.primary.withOpacity(0.1),
-          backgroundImage: user.profilePicUrl != null
-              ? CachedNetworkImageProvider(user.profilePicUrl!)
+          backgroundImage: user.profileImageUrl != null
+              ? CachedNetworkImageProvider(user.profileImageUrl!)
               : null,
-          child: user.profilePicUrl == null
+          child: user.profileImageUrl == null
               ? Icon(
-                  Icons.person,
-                  size: 60,
-                  color: Theme.of(context).colorScheme.primary,
-                )
+            Icons.person,
+            size: 60,
+            color: Theme.of(context).colorScheme.primary,
+          )
               : null,
         ),
         const SizedBox(height: 16),
@@ -101,16 +127,27 @@ class ProfileScreen extends StatelessWidget {
           ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
-        if (user.location != null) ...[
+        if (userLocation != null) ...[ // Now use userLocation here
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.location_on, size: 16, color: Colors.grey),
               const SizedBox(width: 4),
-              Text(
-                user.location!,
-                style: Theme.of(context).textTheme.bodySmall,
+              // The userLocation variable is now correctly scoped here
+              FutureBuilder<String>(
+                future: _locationService.getCityName(userLocation.latitude, userLocation.longitude), // Use userLocation
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  } else if (snapshot.hasError) {
+                    // It's good to show the error message for debugging
+                    return Text('Location: Error (${snapshot.error})');
+                  } else {
+                    // Fallback if snapshot.data is null, though getCityName returns 'Unknown Location'
+                    return Text('Location: ${snapshot.data ?? 'Unknown Location'}');
+                  }
+                },
               ),
             ],
           ),
@@ -129,7 +166,6 @@ class ProfileScreen extends StatelessWidget {
       ],
     );
   }
-
   Widget _buildStatsRow(BuildContext context, UserModel user) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -167,12 +203,12 @@ class ProfileScreen extends StatelessWidget {
   }
 
   Widget _buildStatCard(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon,
-    Color iconColor,
-  ) {
+      BuildContext context,
+      String label,
+      String value,
+      IconData icon,
+      Color iconColor,
+      ) {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 6),
@@ -279,7 +315,7 @@ class ProfileScreen extends StatelessWidget {
                 return Chip(
                   label: Text(
                     skill,
-                    style: const TextStyle(fontSize: 11, color: Colors.white),
+                    style: const TextStyle(fontSize: 15, color: Colors.white),
                   ),
                   backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.8),
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

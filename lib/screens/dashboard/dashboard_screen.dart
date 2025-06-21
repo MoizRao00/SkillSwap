@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/usermodel.dart';
@@ -6,27 +7,178 @@ import '../../models/notification_model.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/navigation_helper.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final FirestoreService _fs = FirestoreService();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // No longer need _currentUser or _currentUserModelStream as state variables.
+  // We'll directly use the StreamBuilder in the build method.
+
+  @override
+  void initState() {
+    super.initState();
+    // No need to set up streams here as the StreamBuilder in build handles it.
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Ensure FirebaseAuth.instance.currentUser is not null before proceeding
+    // The previous code already assumes this and provides a 'null' fallback.
+    final currentUserId = _auth.currentUser?.uid;
+
+    if (currentUserId == null) {
+      // This case should ideally be handled by your routing or authentication
+      // flow, ensuring a logged-in user before reaching the dashboard.
+      // For safety, we return a simple loading or error message.
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()), // Or a message like "User not logged in."
+      );
+    }
+
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: () async {},
-        child: ListView(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-          children: const [
-            RepaintBoundary(child: WelcomeCard()),
-            SizedBox(height: 24),
-            RepaintBoundary(child: StatsOverview()),
-            SizedBox(height: 32),
-            RepaintBoundary(child: NearbyUsersSection()),
-            SizedBox(height: 32),
-            RepaintBoundary(child: SkillMatchesSection()),
-            SizedBox(height: 32),
-            RepaintBoundary(child: RecentActivitiesSection()),
-            SizedBox(height: 20),
+      body: StreamBuilder<UserModel?>(
+        // Use the current user's UID to fetch their UserModel
+        stream: _fs.getUserStream(currentUserId),
+        builder: (context, snapshot) {
+          final user = snapshot.data;
+
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            print("Error loading user data for dashboard: ${snapshot.error}");
+            return const Center(child: Text('Error loading your profile. Please try again.'));
+          }
+
+          if (user == null) {
+            // This case would mean user data doesn't exist for the logged-in UID.
+            // Highly unlikely if user creation is robust.
+            return const Center(child: Text('User profile not found.'));
+          }
+
+          return RefreshIndicator(
+            onRefresh: () async {
+              // Since we are using streams, data updates automatically.
+              // This just provides a visual refresh indicator.
+              await Future.delayed(const Duration(seconds: 1));
+            },
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              children: [
+                RepaintBoundary(child: WelcomeCard(user: user)),
+                const SizedBox(height: 24),
+                RepaintBoundary(child: StatsOverview(user: user)),
+                const SizedBox(height: 32),
+
+                // --- Corrected NearbyUsersSection usage ---
+                if (user.location != null) // Only show nearby users if the user's location is set
+                  RepaintBoundary(
+                    child: NearbyUsersSection(
+                      currentUserLocation: user.location!, // Pass the GeoPoint location
+                      currentUserId: user.uid,              // Pass the current user's UID
+                    ),
+                  )
+                else
+                // Display a message if the user's location is not set
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Card(
+                      elevation: 4,
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Column(
+                          children: [
+                            Text(
+                              "To find nearby users, please set your location in your profile!",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 16, color: Colors.blueGrey),
+                            ),
+                            SizedBox(height: 10),
+                            // You might want to add a button here to navigate
+                            // the user to their profile settings to set location.
+                            // For example:
+                            // ElevatedButton(
+                            //   onPressed: () {
+                            //     // Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileEditScreen()));
+                            //   },
+                            //   child: const Text("Set My Location"),
+                            // ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                // --- End NearbyUsersSection correction ---
+
+                const SizedBox(height: 32),
+                RepaintBoundary(
+                  child: SkillMatchesSection(
+                    currentUserSkillsToTeach: user.skillsToTeach,
+                    currentUserSkillsToLearn: user.skillsToLearn,
+                    currentUserId: user.uid,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                const RepaintBoundary(child: RecentActivitiesSection()),
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+
+// Welcome Card
+class WelcomeCard extends StatelessWidget {
+  final UserModel user;
+
+  const WelcomeCard({super.key, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 36,
+              backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+              backgroundImage: user.profileImageUrl != null
+                  ? CachedNetworkImageProvider(user.profileImageUrl!)
+                  : null,
+              child: user.profileImageUrl == null
+                  ? Icon(Icons.person, size: 40, color: Theme.of(context).colorScheme.primary)
+                  : null,
+            ),
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Welcome back,', style: Theme.of(context).textTheme.titleSmall),
+                  Text(
+                    user.name,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -34,86 +186,30 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
-// Welcome Card
-class WelcomeCard extends StatelessWidget {
-  const WelcomeCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final _fs = FirestoreService();
-    return StreamBuilder<UserModel?>(
-      stream: _fs.getUserStream(FirebaseAuth.instance.currentUser?.uid ?? ''),
-      builder: (context, snapshot) {
-        final user = snapshot.data;
-        return Card(
-          elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 36,
-                  backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                  backgroundImage: user?.profilePicUrl != null
-                      ? CachedNetworkImageProvider(user!.profilePicUrl!)
-                      : null,
-                  child: user?.profilePicUrl == null
-                      ? Icon(Icons.person, size: 40, color: Theme.of(context).colorScheme.primary)
-                      : null,
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Welcome back,', style: Theme.of(context).textTheme.titleSmall),
-                      Text(
-                        user?.name ?? 'User',
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
 
 // Stats Overview
 class StatsOverview extends StatelessWidget {
-  const StatsOverview({super.key});
+  final UserModel user;
+
+  const StatsOverview({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
-    final _fs = FirestoreService();
-    return StreamBuilder<UserModel?>(
-      stream: _fs.getUserStream(FirebaseAuth.instance.currentUser?.uid ?? ''),
-      builder: (context, snapshot) {
-        final user = snapshot.data;
-        return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 6,
-          margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildStatTile(context, 'Skills Teaching', '${user?.skillsToTeach.length ?? 0}', Icons.school),
-                _buildStatTile(context, 'Skills Learning', '${user?.skillsToLearn.length ?? 0}', Icons.psychology),
-                _buildStatTile(context, 'Exchanges', '${user?.totalExchanges ?? 0}', Icons.swap_horiz),
-              ],
-            ),
-          ),
-        );
-      },
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      elevation: 6,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStatTile(context, 'Teaching', '${user.skillsToTeach.length}', Icons.school),
+            _buildStatTile(context, 'Learning', '${user.skillsToLearn.length}', Icons.psychology),
+            _buildStatTile(context, 'Exchanges', '${user.totalExchanges}', Icons.swap_horiz),
+          ],
+        ),
+      ),
     );
   }
 
@@ -124,7 +220,6 @@ class StatsOverview extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           color: Theme.of(context).cardColor,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
         ),
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
         child: Column(
@@ -141,7 +236,10 @@ class StatsOverview extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               title,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 12, color: Colors.grey[600]),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
           ],
@@ -150,8 +248,16 @@ class StatsOverview extends StatelessWidget {
     );
   }
 }
+
+
 class NearbyUsersSection extends StatelessWidget {
-  const NearbyUsersSection({super.key});
+  final GeoPoint currentUserLocation;
+  final String currentUserId;
+
+  const NearbyUsersSection({super.key,
+    required this.currentUserLocation,
+    required this.currentUserId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +268,7 @@ class NearbyUsersSection extends StatelessWidget {
         Text('Nearby Users', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         StreamBuilder<List<UserModel>>(
-          stream: _fs.getNearbyUsers(),
+          stream: _fs.getNearbyUsers(currentUserLocation, currentUserId),
           builder: (context, snapshot) {
             final users = snapshot.data ?? [];
 
@@ -196,10 +302,10 @@ class NearbyUsersSection extends StatelessWidget {
                               CircleAvatar(
                                 radius: 32,
                                 backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                                backgroundImage: user.profilePicUrl != null
-                                    ? CachedNetworkImageProvider(user.profilePicUrl!)
+                                backgroundImage: user.profileImageUrl != null
+                                    ? CachedNetworkImageProvider(user.profileImageUrl!)
                                     : null,
-                                child: user.profilePicUrl == null
+                                child: user.profileImageUrl == null
                                     ? Icon(Icons.person, size: 35, color: Theme.of(context).colorScheme.primary)
                                     : null,
                               ),
@@ -222,7 +328,15 @@ class NearbyUsersSection extends StatelessWidget {
 }
 
 class SkillMatchesSection extends StatelessWidget {
-  const SkillMatchesSection({super.key});
+
+  final List<String> currentUserSkillsToTeach;
+  final List<String> currentUserSkillsToLearn;
+  final String currentUserId; // To exclude current user from results
+
+  const SkillMatchesSection({super.key,
+    required this.currentUserSkillsToTeach,
+    required this.currentUserSkillsToLearn,
+    required this.currentUserId,});
 
   @override
   Widget build(BuildContext context) {
@@ -234,7 +348,11 @@ class SkillMatchesSection extends StatelessWidget {
         Text('Skill Matches', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
         StreamBuilder<List<UserModel>>(
-          stream: _fs.getPotentialMatches(),
+          stream: _fs.getPotentialMatches(
+              userSkillsToTeach: [],
+              userSkillsToLearn: [],
+              excludeUid: ''
+          ),
           builder: (context, snapshot) {
             final matches = snapshot.data ?? [];
 
@@ -258,10 +376,10 @@ class SkillMatchesSection extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundImage: match.profilePicUrl != null
-                          ? CachedNetworkImageProvider(match.profilePicUrl!)
+                      backgroundImage: match.profileImageUrl != null
+                          ? CachedNetworkImageProvider(match.profileImageUrl!)
                           : null,
-                      child: match.profilePicUrl == null
+                      child: match.profileImageUrl == null
                           ? Icon(Icons.person, color: Theme.of(context).colorScheme.primary)
                           : null,
                     ),
@@ -271,7 +389,7 @@ class SkillMatchesSection extends StatelessWidget {
                       runSpacing: 6,
                       children: match.skillsToTeach.take(5).map((skill) {
                         return Chip(
-                          label: Text(skill, style: TextStyle(color: Colors.white, fontSize: 11)),
+                          label: Text(skill, style: TextStyle(color:Theme.of(context).colorScheme.onSecondary, fontSize: 11)),
                           backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.8),
                         );
                       }).toList(),

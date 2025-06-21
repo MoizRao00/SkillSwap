@@ -45,10 +45,10 @@ class _ChatScreenState extends State<ChatScreen> {
         title: ListTile(
           contentPadding: EdgeInsets.zero,
           leading: CircleAvatar(
-            backgroundImage: widget.otherUser.profilePicUrl != null
-                ? NetworkImage(widget.otherUser.profilePicUrl!)
+            backgroundImage: widget.otherUser.profileImageUrl != null
+                ? NetworkImage(widget.otherUser.profileImageUrl!)
                 : null,
-            child: widget.otherUser.profilePicUrl == null
+            child: widget.otherUser.profileImageUrl == null
                 ? const Icon(Icons.person)
                 : null,
           ),

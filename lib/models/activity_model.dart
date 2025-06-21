@@ -1,12 +1,11 @@
-// lib/models/activity_model.dart
-
 enum ActivityType {
   exchangeRequest,
   exchangeAccepted,
   exchangeCompleted,
   newReview,
   skillAdded,
-  profileUpdate
+  profileUpdate,
+  exchangeDeclined,
 }
 
 class Activity {

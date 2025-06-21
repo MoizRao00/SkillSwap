@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // Ensure this import is present for GeoPoint
 import '../../models/review_model.dart';
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
@@ -116,15 +119,15 @@ class UserProfileScreen extends StatelessWidget {
                       radius: 50, // Radius of the circular avatar itself
                       backgroundColor: Theme.of(context).colorScheme.primary
                           .withOpacity(0.1), // Placeholder background
-                      backgroundImage: user.profilePicUrl != null
-                          ? NetworkImage(user.profilePicUrl!)
+                      backgroundImage: user.profileImageUrl != null
+                          ? NetworkImage(user.profileImageUrl!)
                           : null,
-                      child: user.profilePicUrl == null
+                      child: user.profileImageUrl == null
                           ? Icon(
-                              Icons.person,
-                              size: 50,
-                              color: Theme.of(context).colorScheme.primary,
-                            ) // Icon for placeholder
+                        Icons.person,
+                        size: 50,
+                        color: Theme.of(context).colorScheme.primary,
+                      ) // Icon for placeholder
                           : null,
                     ),
                   ),
@@ -150,7 +153,9 @@ class UserProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        user.location!,
+                        // Convert GeoPoint to a string for display
+                        'Lat: ${user.location!.latitude.toStringAsFixed(4)}, ' // Format to 4 decimal places
+                            'Lng: ${user.location!.longitude.toStringAsFixed(4)}', // Format to 4 decimal places
                         style: const TextStyle(color: Colors.white),
                       ),
                     ],
@@ -230,12 +235,12 @@ class UserProfileScreen extends StatelessWidget {
   }
 
   Widget _buildStatItem(
-    BuildContext context,
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+      BuildContext context,
+      String label,
+      String value,
+      IconData icon,
+      Color color,
+      ) {
     return Column(
       children: [
         Icon(icon, color: color),
@@ -273,11 +278,11 @@ class UserProfileScreen extends StatelessWidget {
   }
 
   Widget _buildSkillsList(
-    BuildContext context,
-    String title,
-    List<String> skills,
-    IconData icon,
-  ) {
+      BuildContext context,
+      String title,
+      List<String> skills,
+      IconData icon,
+      ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

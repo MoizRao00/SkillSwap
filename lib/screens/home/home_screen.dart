@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
 import '../activity/activity_screen.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -18,26 +19,34 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FirestoreService _fs = FirestoreService();
-  String? userName;
+  UserModel? _currentUser; // <-- Store the full UserModel
   int _selectedIndex = 0;
   int _unreadNotifications = 0;
 
-  final List<Widget> _screens = [
-    const DashboardScreen(),
-    const ExchangeRequestsListScreen(),
-    ActivityScreen(),
-    const SearchScreen(),
-    const ProfileScreen(),
-  ];
+  // Define _screens as a getter, so it can use _currentUser
+  List<Widget> get _screens {
+    return [
+      const DashboardScreen(),
+      const ExchangeRequestsListScreen(),
+      ActivityScreen(),
+      const SearchScreen(),
+      // Pass the _currentUser to ProfileScreen here
+      // Handle the case where _currentUser might still be null during loading
+      _currentUser != null
+          ? ProfileScreen(currentUser: _currentUser!)
+          : const Center(child: CircularProgressIndicator()), // Or a Text('Loading Profile...')
+    ];
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadUserName();
+    _loadCurrentUser(); // <-- Changed from _loadUserName
     _setupNotificationListener();
   }
 
-  Future<void> _loadUserName() async {
+  // --- MODIFIED: Load the full UserModel ---
+  Future<void> _loadCurrentUser() async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -45,14 +54,23 @@ class _HomeScreenState extends State<HomeScreen> {
             .collection('users')
             .doc(uid)
             .get();
-        if (mounted) {
+        if (doc.exists && mounted) { // Check if document exists
           setState(() {
-            userName = doc['name'];
+            _currentUser = UserModel.fromMap(doc.data() as Map<String, dynamic>);
           });
+        } else {
+          print('User document does not exist for UID: $uid');
+          // Handle case where user might not have a profile yet (e.g., new signup)
+          // You might want to navigate them to an "onboarding" or "create profile" screen
+          // or initialize a basic UserModel for _currentUser.
         }
+      } else {
+        print('No current Firebase user found.');
+        // Handle no logged-in user (e.g., navigate to login screen)
       }
     } catch (e) {
-      print('❌ Error loading user name: $e');
+      print('❌ Error loading current user data: $e');
+      // Optionally show a SnackBar or error state
     }
   }
 
@@ -88,10 +106,9 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 8.0,
         shadowColor: Colors.black.withOpacity(0.5),
 
-        // --- Shape Enhancement ---
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(
-            bottom: Radius.circular(20), // Rounded bottom corners
+            bottom: Radius.circular(20),
           ),
         ),
         actions: [
@@ -107,6 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
+              // --- If SettingsScreen also needs currentUser, pass it here ---
+              // Navigator.push(
+              //   context,
+              //   MaterialPageRoute(
+              //     builder: (context) => SettingsScreen(currentUser: _currentUser),
+              //   ),
+              // );
+              // For now, assuming SettingsScreen doesn't need it or gets it internally
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -117,11 +142,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body:
-      _screens[_selectedIndex],
+      // --- Display the selected screen ---
+      // If _currentUser is null (still loading), it will show the CircularProgressIndicator
+      body: _screens[_selectedIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
+          // If the profile tab is selected and user data is still loading,
+          // you might want to prevent selection or show a temporary message.
+          // For now, it will just show the CircularProgressIndicator from _screens getter.
           setState(() {
             _selectedIndex = index;
           });
@@ -135,7 +164,6 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.swap_horiz),
             label: 'Exchanges',
           ),
-          // Activities with notification badge
           NavigationDestination(
             icon: Stack(
               children: [
@@ -168,7 +196,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             label: 'Activities',
           ),
-
           const NavigationDestination(
             icon: Icon(Icons.search),
             label: 'Search',

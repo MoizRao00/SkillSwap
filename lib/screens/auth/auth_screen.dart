@@ -1,4 +1,3 @@
-// lib/screens/auth/auth_screen.dart
 
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -238,28 +237,27 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     final Color cardColor = Theme.of(context).cardTheme.color ?? Theme.of(context).cardColor; // Get card background color
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Background gradient
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                // Use theme colors for the gradient
-                colors: [
-                  primaryColor.withOpacity(0.9), // Start with a slightly opaque primary
-                  secondaryColor.withOpacity(0.8), // End with a slightly opaque secondary
-                  // For a softer look, you might fade to background or a lighter shade
-                  // Theme.of(context).colorScheme.background, // Or fade to background color
-                ],
+      body: SingleChildScrollView(
+        child: Stack(
+          children: [
+            // Background gradient
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  // Use theme colors for the gradient
+                  colors: [
+                    primaryColor.withOpacity(0.9), // Start with a slightly opaque primary
+                    secondaryColor.withOpacity(0.8), // End with a slightly opaque secondary
+                    // For a softer look, you might fade to background or a lighter shade
+                    // Theme.of(context).colorScheme.background, // Or fade to background color
+                  ],
+                ),
               ),
             ),
-          ),
-          // Content
-          SafeArea(
-            child: SingleChildScrollView( // Added SingleChildScrollView to prevent overflow on small screens/keyboard
-              padding: const EdgeInsets.all(24),
+            // Content
+            SafeArea(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -291,7 +289,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                             ),
                           ),
                           const SizedBox(height: 5,),
-
+        
                           Text(
                             'Exchange Skills, Grow Together',
                             textAlign: TextAlign.center,
@@ -327,7 +325,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     ),
                                   ),
                                 if (!_isLogin) const SizedBox(height: 16),
-
+        
                                 // Email field
                                 TextFormField(
                                   controller: _emailController,
@@ -347,7 +345,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   },
                                 ),
                                 const SizedBox(height: 16),
-
+        
                                 // Password field with show/hide button
                                 TextFormField(
                                   controller: _passwordController,
@@ -377,7 +375,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   },
                                 ),
                                 const SizedBox(height: 16),
-
+        
                                 // Remember Me checkbox (only for Login mode)
                                 if (_isLogin)
                                   CheckboxListTile(
@@ -396,9 +394,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     activeColor: primaryColor, // Themed active color for checkbox
                                   ),
                                 if (_isLogin) const SizedBox(height: 8),
-
+        
                                 const SizedBox(height: 24),
-
+        
                                 // Main Email/Password Submit button (uses ElevatedButtonThemeData)
                                 ElevatedButton(
                                   onPressed: _isLoading ? null : _submitForm,
@@ -414,7 +412,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                       : Text(_isLogin ? 'Login' : 'Sign Up'),
                                 ),
                                 const SizedBox(height: 16),
-
+        
                                 // "OR" separator
                                 Text(
                                   'OR',
@@ -422,7 +420,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                   style: TextStyle(color: onSurfaceColor.withOpacity(0.6)), // Themed separator color
                                 ),
                                 const SizedBox(height: 16),
-
+        
                                 // Google Login Button
                                 ElevatedButton.icon(
                                   onPressed: _isLoading ? null : _signInWithGoogle,
@@ -437,8 +435,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 16),
-
+                                const SizedBox(height: 0),
+        
                                 // Toggle button (Create Account / Already have an account)
                                 TextButton(
                                   onPressed: () {
@@ -471,8 +469,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

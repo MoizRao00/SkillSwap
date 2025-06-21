@@ -173,10 +173,10 @@ class _CreateExchangeRequestScreenState
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundImage: widget.otherUser.profilePicUrl != null
-              ? NetworkImage(widget.otherUser.profilePicUrl!)
+          backgroundImage: widget.otherUser.profileImageUrl != null
+              ? NetworkImage(widget.otherUser.profileImageUrl!)
               : null,
-          child: widget.otherUser.profilePicUrl == null
+          child: widget.otherUser.profileImageUrl == null
               ? const Icon(Icons.person)
               : null,
         ),
@@ -185,10 +185,16 @@ class _CreateExchangeRequestScreenState
             ? Row(
           children: [
             const Icon(Icons.location_on, size: 16),
-            Text(widget.otherUser.location!),
+            const SizedBox(width: 4), // Add a small space for better readability
+            Text(
+              // Convert GeoPoint to a string representation
+              'Lat: ${widget.otherUser.location!.latitude.toStringAsFixed(2)}, '
+                  'Lng: ${widget.otherUser.location!.longitude.toStringAsFixed(2)}',
+              style: Theme.of(context).textTheme.bodySmall, // Apply a suitable text style
+            ),
           ],
         )
-            : null,
+            : null, // Still null if location is not available
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

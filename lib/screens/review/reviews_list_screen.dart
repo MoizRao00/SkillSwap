@@ -67,10 +67,10 @@ class ReviewsListScreen extends StatelessWidget {
                           Row(
                             children: [
                               CircleAvatar(
-                                backgroundImage: reviewer?.profilePicUrl != null
-                                    ? NetworkImage(reviewer!.profilePicUrl!)
+                                backgroundImage: reviewer?.profileImageUrl != null
+                                    ? NetworkImage(reviewer!.profileImageUrl!)
                                     : null,
-                                child: reviewer?.profilePicUrl == null
+                                child: reviewer?.profileImageUrl == null
                                     ? const Icon(Icons.person)
                                     : null,
                               ),

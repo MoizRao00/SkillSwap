@@ -2,8 +2,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Make sure this is imported for GeoPoint
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import '../../models/usermodel.dart';
 import '../../services/firestore_service.dart';
+import '../../services/skill_api_service.dart';
 import '../../utils/navigation_helper.dart';
 import '../../widgets/animation/fade_animation.dart';
 import '../../widgets/animation/slide_animation.dart';
@@ -16,8 +18,11 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
+
   final FirestoreService _fs = FirestoreService();
+
   final _searchController = TextEditingController();
+  final SkillApiService _skillApiService = SkillApiService();
 
   List<UserModel> _searchResults = [];
   bool _isLoading = false;
@@ -67,13 +72,79 @@ class _SearchScreenState extends State<SearchScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Search Bar
-            TextField(
+            // ⭐️ Conditionally show TypeAheadField for skills or TextField for location
+            _selectedFilter == 'skills'
+                ? TypeAheadField<String>(
+              // 📄 Use your existing controller to sync text
+              controller: _searchController,
+              suggestionsCallback: (pattern) async {
+                // 🚀 Get suggestions from the GitHub API
+                return await _skillApiService.searchSkills(pattern);
+              },
+              // 🎨 Use the styled UI from our previous conversation
+              itemBuilder: (context, suggestion) {
+                return Card(
+                  elevation: 2, // Use a slightly lower elevation for suggestions
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: ListTile(
+                    leading: Icon(Icons.check_circle_outline, color: Theme.of(context).colorScheme.primary),
+                    title: Text(suggestion),
+                  ),
+                );
+              },
+              onSelected: (suggestion) {
+                // ⭐ When a suggestion is selected, perform the search
+                setState(() {
+                  // Update the text field with the selected suggestion
+                  _searchController.text = suggestion;
+                  // Now, perform the Firestore search with the selected skill
+                  _performSearch(suggestion);
+                });
+              },
+              // 📄 The TextField UI for the TypeAheadField
+              builder: (context, controller, focusNode) {
+                return TextField(
+                  controller: controller, // Use the controller provided by the builder
+                  focusNode: focusNode,
+                  decoration: InputDecoration(
+                    hintText: 'Search skills...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (controller.text.isNotEmpty)
+                          IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              controller.clear();
+                              _performSearch(''); // Clear results when clearing text
+                            },
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.filter_list),
+                          onPressed: _showFilterDialog,
+                        ),
+                      ],
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onChanged: (text) {
+                    // The onChanged here only triggers suggestions, not a search.
+                    // The search is triggered onSelected.
+                  },
+                );
+              },
+            )
+                : TextField(
+              // 📄 Regular TextField for location search
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: _selectedFilter == 'skills'
-                    ? 'Search skills...'
-                    : 'Search by location...',
+                hintText: 'Search by location...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -96,7 +167,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              onChanged: _performSearch,
+              onChanged: _performSearch, // This still performs a search on every change
             ),
             const SizedBox(height: 12),
 
@@ -104,6 +175,7 @@ class _SearchScreenState extends State<SearchScreen> {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
+                // ... your FilterChip widgets ...
                 children: [
                   _buildFilterChip(
                     label: 'Skills',
@@ -141,7 +213,10 @@ class _SearchScreenState extends State<SearchScreen> {
                         if (selected) {
                           setState(() {
                             _selectedSkillType = 'teaching';
-                            _performSearch(_searchController.text);
+                            // Re-run the search if there is text in the controller
+                            if (_searchController.text.isNotEmpty) {
+                              _performSearch(_searchController.text);
+                            }
                           });
                         }
                       },
@@ -154,7 +229,9 @@ class _SearchScreenState extends State<SearchScreen> {
                         if (selected) {
                           setState(() {
                             _selectedSkillType = 'learning';
-                            _performSearch(_searchController.text);
+                            if (_searchController.text.isNotEmpty) {
+                              _performSearch(_searchController.text);
+                            }
                           });
                         }
                       },
@@ -173,7 +250,8 @@ class _SearchScreenState extends State<SearchScreen> {
     required String label,
     required bool isSelected,
     required Function(bool) onSelected,
-  }) {
+  })
+  {
     return FilterChip(
       label: Text(label),
       selected: isSelected,
@@ -385,12 +463,11 @@ class _UserSearchCard extends StatelessWidget {
                             children: [
                               const Icon(Icons.location_on, size: 16),
                               const SizedBox(width: 4),
-                              Text(
-                                // Convert GeoPoint to a string for display
-                                // Using 4 decimal places for consistency
-                                'Lat: ${user.location!.latitude.toStringAsFixed(4)}, '
-                                    'Lng: ${user.location!.longitude.toStringAsFixed(4)}',
-                                style: Theme.of(context).textTheme.bodySmall,
+                              Expanded(
+                                child: Text(
+                                  '${user.locationName!}', // Directly use locationName from UserModel
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
                               ),
                             ],
                           ),

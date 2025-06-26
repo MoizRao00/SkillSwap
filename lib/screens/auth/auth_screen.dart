@@ -177,21 +177,27 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
         idToken: googleAuth.idToken,
       );
 
+      // This signs in or creates a Firebase Auth user associated with the Google account.
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       User? user = userCredential.user;
 
       if (user != null) {
-        final userDoc = await _authService.firestoreService.getUserStream(user.uid).first;
+        // --- CORRECTED SECTION FOR FIRESTORE DOCUMENT ---
+        // Check if the user's document already exists in Firestore
+        // Use .get() for a one-time fetch to check for existence
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
 
-        if (userDoc == null) {
+        if (!userDoc.exists) { // If the document DOES NOT exist
           await _authService.firestoreService.createUserDocument(
             user.uid,
-            googleUser.displayName ?? googleUser.email.split('@')[0],
+            googleUser.displayName ?? googleUser.email.split('@')[0], // Use Google display name, fallback to part of email
             googleUser.email,
           );
         } else {
+          // If the document DOES exist, just update lastActive (or other relevant fields)
           await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
             'lastActive': DateTime.now().toIso8601String(),
+            // Optionally update other fields like profileImageUrl, displayName if they change via Google
           });
         }
       }

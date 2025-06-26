@@ -1,3 +1,5 @@
+// lib/services/firestore_service.dart
+
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -46,7 +48,7 @@ class FirestoreService {
     required String senderSkill,
     required String receiverSkill,
     required String message,
-    String? location,
+    String? location, // This `location` is a String, not GeoPoint. Renamed to `locationText` for clarity
     DateTime? scheduledDate,
   }) async {
     try {
@@ -62,7 +64,8 @@ class FirestoreService {
         receiverSkill: receiverSkill,
         message: message,
         createdAt: DateTime.now(),
-        location: location,
+        // This `location` in ExchangeRequest refers to the text input field from the UI
+        location: location, // Still using this for the message/request's preferred location
         scheduledDate: scheduledDate,
         status: ExchangeStatus.pending,
       );
@@ -213,6 +216,7 @@ class FirestoreService {
         ratings: {},
         location: null,
         geohash: null,
+        locationName: null, // <--- NEW: Initialize locationName
       );
 
       return await saveUser(newUser);
@@ -226,6 +230,7 @@ class FirestoreService {
     try {
       Map<String, dynamic> userData = user.toMap();
 
+      // Automatically generate geohash if location is present
       if (user.location != null) {
         userData['geohash'] = _geoHasher.encode(
           user.location!.longitude,
@@ -235,6 +240,8 @@ class FirestoreService {
       } else {
         userData['geohash'] = null;
       }
+      // No change needed for locationName here, as it's part of user.toMap() now.
+
       await _firestore.collection('users').doc(user.uid).set(userData);
       print('✅ User saved successfully: ${user.name}');
       return true;
@@ -248,6 +255,7 @@ class FirestoreService {
     try {
       final doc = await _firestore.collection('users').doc(uid).get();
       if (doc.exists && doc.data() != null) {
+        // UserModel.fromMap now handles the 'uid' from the map, not as a separate argument
         return UserModel.fromMap(doc.data()!);
       } else {
         print('❌ User not found: $uid');
@@ -262,6 +270,7 @@ class FirestoreService {
   Stream<UserModel?> getUserStream(String uid) {
     return _firestore.collection('users').doc(uid).snapshots().map((doc) {
       if (doc.exists && doc.data() != null) {
+        // UserModel.fromMap now handles the 'uid' from the map, not as a separate argument
         return UserModel.fromMap(doc.data() as Map<String, dynamic>);
       }
       return null;
@@ -275,10 +284,13 @@ class FirestoreService {
     return null;
   }
 
+  // UPDATED: updateUser method to properly handle locationName and geohash
   Future<bool> updateUser(String uid, Map<String, dynamic> updates) async {
     try {
-      updates['lastActive'] = DateTime.now().toIso8601String();
+      // Always update lastActive
+      updates['lastActive'] = Timestamp.fromDate(DateTime.now()); // Changed to Timestamp
 
+      // If location (GeoPoint) is being updated, recalculate geohash
       if (updates.containsKey('location') && updates['location'] is GeoPoint) {
         final GeoPoint loc = updates['location'];
         updates['geohash'] = _geoHasher.encode(
@@ -286,7 +298,12 @@ class FirestoreService {
           loc.latitude,
           precision: 9,
         );
+      } else if (updates.containsKey('location') && updates['location'] == null) {
+        // If location is being set to null, also nullify geohash
+        updates['geohash'] = null;
       }
+      // No specific handling for 'locationName' here, as it will just be updated if present in the 'updates' map.
+
       await _firestore.collection('users').doc(uid).update(updates);
       print('✅ User updated successfully: $uid');
       return true;
@@ -296,6 +313,7 @@ class FirestoreService {
     }
   }
 
+  // You have createUserDocument. Ensure it also initializes locationName to null.
   Future<void> createUserDocument(String uid, String name, String email) async {
     final now = DateTime.now();
     await _firestore.collection('users').doc(uid).set({
@@ -307,13 +325,14 @@ class FirestoreService {
       'phoneNumber': null,
       'location': null,
       'geohash': null,
+      'locationName': null, // <--- NEW: Initialize locationName here too
       'skillsToTeach': [],
       'skillsToLearn': [],
       'rating': 0.0,
       'totalExchanges': 0,
       'reviews': [],
-      'createdAt': now.toIso8601String(),
-      'lastActive': now.toIso8601String(),
+      'createdAt': Timestamp.fromDate(now), // Changed to Timestamp
+      'lastActive': Timestamp.fromDate(now), // Changed to Timestamp
       'isAvailable': true,
       'isVerified': false,
       'portfolio': [],
@@ -333,7 +352,7 @@ class FirestoreService {
   Future<void> updateAvailability(String uid, bool isAvailable) async {
     await _firestore.collection('users').doc(uid).update({
       'isAvailable': isAvailable,
-      'lastActive': DateTime.now().toIso8601String(),
+      'lastActive': Timestamp.fromDate(DateTime.now()), // Changed to Timestamp
     });
   }
 
@@ -517,7 +536,8 @@ class FirestoreService {
     required String reviewedUserId,
     required double rating,
     required String comment,
-  }) async {
+  }) async
+  {
     try {
       final reviewer = FirebaseAuth.instance.currentUser;
       if (reviewer == null) return false;
@@ -589,7 +609,8 @@ class FirestoreService {
     required String message,
     required NotificationType type,
     Map<String, dynamic> data = const {},
-  }) async {
+  })
+  async {
     try {
       final docRef = _firestore.collection('notifications').doc();
       final notification = NotificationModel(
@@ -799,7 +820,7 @@ class FirestoreService {
     required bool searchSkills,
     String skillType = 'teaching',
     double minRating = 0.0,
-    bool onlyAvailable = true,
+    bool onlyAvailable = false,
   }) async {
     try {
       Query usersQuery = _firestore.collection('users');
@@ -814,7 +835,8 @@ class FirestoreService {
 
       if (searchSkills) {
         final field = skillType == 'teaching' ? 'skillsToTeach' : 'skillsToLearn';
-        usersQuery = usersQuery.where(field, arrayContains: query.toLowerCase());
+
+        usersQuery = usersQuery.where(field, arrayContains: query);
       } else {
         final lowercaseQuery = query.toLowerCase();
         usersQuery = usersQuery
@@ -836,9 +858,12 @@ class FirestoreService {
 
   Future<List<UserModel>> getUsersByLocation(String location) async {
     try {
+      // FIX: This query won't work as expected with GeoPoint `location`
+      // You cannot directly query a GeoPoint field using `isEqualTo` with a string city name.
+      // You should query by `locationName` field instead.
       QuerySnapshot querySnapshot = await _firestore
           .collection('users')
-          .where('location', isEqualTo: location)
+          .where('locationName', isEqualTo: location) // <--- CHANGED THIS
           .where('isAvailable', isEqualTo: true)
           .limit(15)
           .get();

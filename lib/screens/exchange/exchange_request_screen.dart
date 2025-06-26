@@ -1,5 +1,3 @@
-// lib/screens/exchange/create_exchange_request_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/usermodel.dart';
@@ -22,10 +20,13 @@ class CreateExchangeRequestScreen extends StatefulWidget {
 
 class _CreateExchangeRequestScreenState
     extends State<CreateExchangeRequestScreen> {
+
   final _formKey = GlobalKey<FormState>();
   final _messageController = TextEditingController();
   final _locationController = TextEditingController();
   final FirestoreService _fs = FirestoreService();
+
+  UserModel? _currentUserData;
 
   String? _selectedTeachSkill;
   String? _selectedLearnSkill;
@@ -41,15 +42,22 @@ class _CreateExchangeRequestScreenState
   Future<void> _loadCurrentUser() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
-      final userData = await _fs.getUser(currentUser.uid);
+      final userData = await _fs.getUser(currentUser.uid); // This fetches *your* user's data
       if (mounted && userData != null) {
         setState(() {
-          if (userData.skillsToTeach.isNotEmpty) {
-            _selectedTeachSkill = userData.skillsToTeach.first;
-          }
-          if (widget.otherUser.skillsToTeach.isNotEmpty) {
-            _selectedLearnSkill = widget.otherUser.skillsToTeach.first;
-          }
+          _currentUserData = userData; // Store your user's full data
+
+          // Initialize _selectedTeachSkill only if *your* skillsToTeach is not empty
+          // and set it to the first available skill or null
+          _selectedTeachSkill = _currentUserData!.skillsToTeach.isNotEmpty
+              ? _currentUserData!.skillsToTeach.first
+              : null;
+
+          // Initialize _selectedLearnSkill only if *otherUser's* skillsToTeach is not empty
+          // and set it to the first available skill or null
+          _selectedLearnSkill = widget.otherUser.skillsToTeach.isNotEmpty
+              ? widget.otherUser.skillsToTeach.first
+              : null;
         });
       }
     }
@@ -181,20 +189,21 @@ class _CreateExchangeRequestScreenState
               : null,
         ),
         title: Text(widget.otherUser.name),
-        subtitle: widget.otherUser.location != null
+        subtitle: widget.otherUser.locationName != null
             ? Row(
           children: [
             const Icon(Icons.location_on, size: 16),
-            const SizedBox(width: 4), // Add a small space for better readability
-            Text(
-              // Convert GeoPoint to a string representation
-              'Lat: ${widget.otherUser.location!.latitude.toStringAsFixed(2)}, '
-                  'Lng: ${widget.otherUser.location!.longitude.toStringAsFixed(2)}',
-              style: Theme.of(context).textTheme.bodySmall, // Apply a suitable text style
+            const SizedBox(width: 4),
+            Expanded(
+              child: Text(
+                widget.otherUser.locationName!, // Display the human-readable name
+                style: Theme.of(context).textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis, // Helps with long names
+              ),
             ),
           ],
         )
-            : null, // Still null if location is not available
+            : null, // If no locationName, subtitle will be null
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -207,6 +216,16 @@ class _CreateExchangeRequestScreenState
   }
 
   Widget _buildSkillsSelection() {
+    // Ensure _currentUserData is loaded before rendering dropdowns
+    if (_currentUserData == null) {
+      return const Center(child: CircularProgressIndicator()); // Or a placeholder
+    }
+
+    // Get unique skills for dropdowns to prevent duplicate item crashes
+    final List<String> yourTeachSkills = _currentUserData!.skillsToTeach.toSet().toList();
+    final List<String> otherUserTeachSkills = widget.otherUser.skillsToTeach.toSet().toList();
+
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -215,36 +234,49 @@ class _CreateExchangeRequestScreenState
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 16),
-        // What you'll teach
+        // What you'll teach (from your skillsToTeach)
         DropdownButtonFormField<String>(
           value: _selectedTeachSkill,
           decoration: const InputDecoration(
             labelText: 'Skill you\'ll teach',
             border: OutlineInputBorder(),
           ),
-          items: widget.otherUser.skillsToLearn
+          items: yourTeachSkills
               .map((skill) => DropdownMenuItem(
             value: skill,
             child: Text(skill),
           ))
               .toList(),
           onChanged: (value) => setState(() => _selectedTeachSkill = value),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please select a skill you\'ll teach';
+            }
+            return null;
+          },
         ),
         const SizedBox(height: 16),
-        // What you'll learn
+        // What you'll learn (from other user's skillsToTeach)
         DropdownButtonFormField<String>(
           value: _selectedLearnSkill,
           decoration: const InputDecoration(
             labelText: 'Skill you\'ll learn',
             border: OutlineInputBorder(),
           ),
-          items: widget.otherUser.skillsToTeach
+          // CORRECTED: Items are *other user's* skills to teach
+          items: otherUserTeachSkills
               .map((skill) => DropdownMenuItem(
             value: skill,
             child: Text(skill),
           ))
               .toList(),
           onChanged: (value) => setState(() => _selectedLearnSkill = value),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please select a skill you\'ll learn';
+            }
+            return null;
+          },
         ),
       ],
     );

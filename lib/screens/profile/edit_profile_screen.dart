@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/firestore_service.dart';
@@ -71,26 +72,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
     );
   }
+  // In _EditProfileScreenState
+
   Future<void> _updateCurrentUserLocation(BuildContext context) async {
-    final firestoreService = FirestoreService();
-    final currentUserId = firestoreService.currentUserId;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid; // Get current user's UID directly
 
     if (currentUserId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: User not logged in.')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: User not logged in.')),
+        );
+      }
       return;
     }
+
+    setState(() => _isLoading = true); // Indicate loading
 
     // 1. Check if location services are enabled on the device
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Location services are disabled. Please enable them.'),
-          duration: Duration(seconds: 5),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location services are disabled. Please enable them.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+      setState(() => _isLoading = false);
       return;
     }
 
@@ -99,68 +108,117 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location permissions are denied. Cannot set location without permission.'),
-            duration: Duration(seconds: 5),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permissions are denied. Cannot set location without permission.'),
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+        setState(() => _isLoading = false);
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Location permissions are permanently denied. Please enable from app settings.'),
-          duration: Duration(seconds: 8),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permissions are permanently denied. Please enable from app settings.'),
+            duration: Duration(seconds: 8),
+          ),
+        );
+      }
+      setState(() => _isLoading = false);
       // Optionally, you might want to open app settings: Geolocator.openAppSettings();
       return;
     }
 
     // 3. Get the current position
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fetching your location...')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fetching your location...')),
+        );
+      }
 
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high, // Use high accuracy for better results
-        timeLimit: const Duration(seconds: 15), // Add a timeout
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
       );
 
-      // 4. Convert the Position to a GeoPoint for Firestore
       GeoPoint userGeoPoint = GeoPoint(position.latitude, position.longitude);
+      String? fetchedLocationName; // To store the human-readable name
+
+      // 4. Perform Reverse Geocoding
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(position.latitude, position.longitude);
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks.first;
+          // You can customize the format of the location name here
+          // Example: "City, State, Country" or "Locality, Country"
+          fetchedLocationName = place.locality ?? place.subAdministrativeArea ?? place.administrativeArea ?? place.country ?? 'Unknown Location';
+          if (place.country != null && fetchedLocationName != null && !fetchedLocationName.contains(place.country!)) {
+            fetchedLocationName += ', ${place.country}';
+          }
+        }
+      } catch (e) {
+        print('Error during reverse geocoding: $e');
+        fetchedLocationName = 'Unknown Location'; // Fallback if geocoding fails
+      }
 
       // 5. Update the user profile in Firestore
-      bool success = await firestoreService.updateUser(
+      // Use _fs.updateUser to save both GeoPoint and locationName
+      // Note: _fs.updateUser needs to accept a Map<String, dynamic>
+      bool success = await _fs.updateUser(
         currentUserId,
         {
           'location': userGeoPoint,
+          'locationName': fetchedLocationName, // Saving the human-readable name
           // The 'geohash' field will be automatically calculated and saved by FirestoreService
-          // because we updated the updateUser method to handle this.
+          // because we updated the updateUser method to handle this. (Assuming it does)
         },
       );
 
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Location updated successfully!')),
-        );
-        print('Location saved to Firestore: Lat ${userGeoPoint.latitude}, Lng ${userGeoPoint.longitude}');
+        // CRITICAL: Update the local _currentUser object in the state
+        // and update the _locationController for display
+        setState(() {
+          _currentUser = _currentUser?.copyWith(
+            location: userGeoPoint,
+            locationName: fetchedLocationName,
+          );
+          _locationController.text = fetchedLocationName ?? 'Location not set';
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location updated successfully!')),
+          );
+        }
+        print('Location saved to Firestore: Lat ${userGeoPoint.latitude}, Lng ${userGeoPoint.longitude}, Name: $fetchedLocationName');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to save location to Firestore.')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to save location to Firestore.')),
+          );
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error fetching or saving location: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching or saving location: $e')),
+        );
+      }
       print('Error in _updateCurrentUserLocation: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
+
   Future<void> _updateProfilePicture(bool fromCamera) async {
     try {
       setState(() => _isLoading = true);
@@ -262,10 +320,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-// Helper function to get Android SDK version (needs device_info_plus package)
+
   Future<int> getAndroidSdkVersion() async {
-    // Add device_info_plus: ^latest_version to your pubspec.yaml
-    // import 'package:device_info_plus/device_info_plus.dart';
+
     final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     final AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
     return androidInfo.version.sdkInt;
@@ -283,19 +340,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _nameController.text = userData.name;
           _bioController.text = userData.bio ?? '';
 
-          // --- FIX FOR LOCATION CONTROLLER INITIALIZATION ---
-          if (userData.location != null) {
-            // Format GeoPoint into a readable string (e.g., "Lat: 34.56, Lng: -118.78")
-            _locationController.text =
-            'Lat: ${userData.location!.latitude.toStringAsFixed(4)}, ' // Format to 4 decimal places
-                'Lng: ${userData.location!.longitude.toStringAsFixed(4)}';
-          } else {
-            _locationController.text = ''; // If location is null, set controller text to empty
-          }
-          // --- END FIX ---
+
+          _locationController.text = userData.locationName ?? '';
 
           _phoneController.text = userData.phoneNumber ?? '';
-          // Initialize local skill lists from loaded user data
           _currentSkillsToTeach = List.from(userData.skillsToTeach);
           _currentSkillsToLearn = List.from(userData.skillsToLearn);
         });
@@ -311,43 +359,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null && _currentUser != null) {
-        // Create updated user model from current UI state
+        // The _currentUser object in state already has the updated location and locationName
+        // from _updateCurrentUserLocation. So copyWith will use those values.
         final updatedUser = _currentUser!.copyWith(
           name: _nameController.text.trim(),
-          bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(), // Handle empty string to null
+          bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
+          // location and locationName are already updated in _currentUser state,
+          // so copyWith will implicitly carry them over unless overridden.
+          // Explicitly keeping them for clarity, but not strictly needed if not changing
+          location: _currentUser!.location,
+          locationName: _currentUser!.locationName,
 
-          // --- FIX FOR LOCATION ---
-          // We cannot directly assign _locationController.text (which is a String)
-          // to a GeoPoint field.
-          // For now, we preserve the existing GeoPoint location.
-          // If you implement a map picker later, you would get a new GeoPoint
-          // from that picker and assign it here.
-          location: _currentUser!.location, // Preserve the existing GeoPoint
-          // If you had a temporary variable for a newly selected GeoPoint, you might use:
-          // location: _newlySelectedGeoPoint ?? _currentUser!.location,
-          // --- END FIX ---
-
-          phoneNumber: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(), // Handle empty string to null
+          phoneNumber: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
           skillsToTeach: _currentSkillsToTeach,
           skillsToLearn: _currentSkillsToLearn,
           lastActive: DateTime.now(),
-          isAvailable: _currentUser!.isAvailable, // Ensure availability is preserved
+          isAvailable: _currentUser!.isAvailable,
         );
 
-        // Save to Firestore. Assuming _fs.saveUser handles both create and update
-        // and correctly converts UserModel to a Map for Firestore.
+        // Your FirestoreService.saveUser method needs to accept a UserModel and save its .toMap()
         await _fs.saveUser(updatedUser);
 
-        // Update the local _currentUser state to reflect the saved changes
         setState(() {
-          _currentUser = updatedUser;
+          _currentUser = updatedUser; // Update local state after successful save
         });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Profile updated successfully!')),
           );
-          Navigator.pop(context); // Pop back to the previous screen
+          Navigator.pop(context);
         }
       }
     } catch (e) {
@@ -362,6 +403,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       }
     }
   }
+
 
   @override
   void dispose() {

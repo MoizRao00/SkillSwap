@@ -1,4 +1,4 @@
-// In your usermodel.dart file
+// lib/models/usermodel.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -15,6 +15,7 @@ class UserModel {
   Map<String, dynamic>? ratings; // Made nullable and non-final
   final GeoPoint? location;
   String? geohash; // Made nullable and non-final
+  String? locationName; // <--- NEW: Human-readable location name
   final double rating;
   final int totalExchanges;
   final List<String> reviews;
@@ -28,15 +29,16 @@ class UserModel {
     required this.uid,
     required this.email,
     required this.name,
-    this.phoneNumber, // Added as named parameter
-    this.profileImageUrl, // Added as named parameter
+    this.phoneNumber,
+    this.profileImageUrl,
     this.bio = '',
     this.skillsToTeach = const [],
     this.skillsToLearn = const [],
-    this.availability, // Added as named parameter
-    this.ratings, // Added as named parameter
+    this.availability,
+    this.ratings,
     this.location,
-    this.geohash, // Added as named parameter
+    this.geohash,
+    this.locationName, // <--- NEW: Add to constructor
     this.rating = 0.0,
     this.totalExchanges = 0,
     this.reviews = const [],
@@ -53,8 +55,8 @@ class UserModel {
       uid: data['uid'] as String,
       email: data['email'] as String,
       name: data['name'] as String,
-      phoneNumber: data['phoneNumber'] as String?, // Ensure type safety
-      profileImageUrl: data['profileImageUrl'] as String?, // Ensure type safety
+      phoneNumber: data['phoneNumber'] as String?,
+      profileImageUrl: data['profileImageUrl'] as String?,
       bio: data['bio'] as String? ?? '',
       skillsToTeach: List<String>.from(data['skillsToTeach'] ?? []),
       skillsToLearn: List<String>.from(data['skillsToLearn'] ?? []),
@@ -62,11 +64,15 @@ class UserModel {
       ratings: data['ratings'] is Map ? Map<String, dynamic>.from(data['ratings']) : null,
       location: data['location'] is GeoPoint ? data['location'] as GeoPoint : null,
       geohash: data['geohash'] as String?,
+      locationName: data['locationName'] as String?, // <--- NEW: Read from map
       rating: (data['rating'] as num?)?.toDouble() ?? 0.0,
       totalExchanges: data['totalExchanges'] as int? ?? 0,
       reviews: List<String>.from(data['reviews'] ?? []),
-      createdAt: DateTime.parse(data['createdAt'] as String),
-      lastActive: DateTime.parse(data['lastActive'] as String),
+      // Firestore Timestamps are usually converted to DateTime.
+      // Your current parsing assumes String, which might be risky if Firestore sends Timestamps.
+      // If Firestore sends Timestamps, change this:
+      createdAt: (data['createdAt'] is Timestamp) ? (data['createdAt'] as Timestamp).toDate() : DateTime.parse(data['createdAt'] as String),
+      lastActive: (data['lastActive'] is Timestamp) ? (data['lastActive'] as Timestamp).toDate() : DateTime.parse(data['lastActive'] as String),
       isAvailable: data['isAvailable'] as bool? ?? true,
       isVerified: data['isVerified'] as bool? ?? false,
       portfolio: List<String>.from(data['portfolio'] ?? []),
@@ -80,7 +86,7 @@ class UserModel {
       'email': email,
       'name': name,
       'phoneNumber': phoneNumber,
-      'profileImageUrl': profileImageUrl, // Consistent naming
+      'profileImageUrl': profileImageUrl,
       'bio': bio,
       'skillsToTeach': skillsToTeach,
       'skillsToLearn': skillsToLearn,
@@ -88,11 +94,13 @@ class UserModel {
       'ratings': ratings,
       'location': location,
       'geohash': geohash,
+      'locationName': locationName, // <--- NEW: Write to map
       'rating': rating,
       'totalExchanges': totalExchanges,
       'reviews': reviews,
-      'createdAt': createdAt.toIso8601String(),
-      'lastActive': lastActive.toIso8601String(),
+      // For Firestore, it's generally best to save DateTimes as Timestamps
+      'createdAt': Timestamp.fromDate(createdAt), // Changed to Timestamp
+      'lastActive': Timestamp.fromDate(lastActive), // Changed to Timestamp
       'isAvailable': isAvailable,
       'isVerified': isVerified,
       'portfolio': portfolio,
@@ -113,6 +121,7 @@ class UserModel {
     Map<String, dynamic>? ratings,
     GeoPoint? location,
     String? geohash,
+    String? locationName, // <--- NEW: Add to copyWith
     double? rating,
     int? totalExchanges,
     List<String>? reviews,
@@ -135,6 +144,7 @@ class UserModel {
       ratings: ratings ?? this.ratings,
       location: location ?? this.location,
       geohash: geohash ?? this.geohash,
+      locationName: locationName ?? this.locationName, // <--- NEW: Assign in copyWith
       rating: rating ?? this.rating,
       totalExchanges: totalExchanges ?? this.totalExchanges,
       reviews: reviews ?? this.reviews,

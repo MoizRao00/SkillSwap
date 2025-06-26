@@ -19,12 +19,11 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
 
-  late LocationService _locationService;
+
 
   @override
   void initState() {
     super.initState();
-    _locationService = LocationService(); // Initialize the service
   }
   @override
   Widget build(BuildContext context) {
@@ -95,8 +94,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildProfileHeader(BuildContext context, UserModel user) {
-    // Define userLocation at a scope where it's accessible by FutureBuilder
-    final GeoPoint? userLocation = user.location; // <-- Define it here
+    // No need for GeoPoint userLocation variable here if you're not doing on-the-fly geocoding
+    // final GeoPoint? userLocation = user.location;
 
     return Column(
       children: [
@@ -105,9 +104,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         CircleAvatar(
           radius: 60,
-          backgroundColor: Theme.of(
-            context,
-          ).colorScheme.primary.withOpacity(0.1),
+          backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
           backgroundImage: user.profileImageUrl != null
               ? CachedNetworkImageProvider(user.profileImageUrl!)
               : null,
@@ -122,36 +119,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(height: 16),
         Text(
           user.name,
-          style: Theme.of(
-            context,
-          ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
           textAlign: TextAlign.center,
         ),
-        if (userLocation != null) ...[ // Now use userLocation here
+        // --- CHANGED BLOCK BELOW ---
+        if (user.locationName != null && user.locationName!.isNotEmpty) ...[
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Icon(Icons.location_on, size: 16, color: Colors.grey),
               const SizedBox(width: 4),
-              // The userLocation variable is now correctly scoped here
-              FutureBuilder<String>(
-                future: _locationService.getCityName(userLocation.latitude, userLocation.longitude), // Use userLocation
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const CircularProgressIndicator();
-                  } else if (snapshot.hasError) {
-                    // It's good to show the error message for debugging
-                    return Text('Location: Error (${snapshot.error})');
-                  } else {
-                    // Fallback if snapshot.data is null, though getCityName returns 'Unknown Location'
-                    return Text('Location: ${snapshot.data ?? 'Unknown Location'}');
-                  }
-                },
+              Text(
+                'Location: ${user.locationName!}', // Directly use locationName from UserModel
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
+        ] else if (user.location != null) ...[ // Fallback if locationName somehow got cleared or is old data
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.location_on, size: 16, color: Colors.grey),
+              const SizedBox(width: 4),
+              // Optional: You could keep a FutureBuilder here as a fallback
+              // for old data or if locationName somehow becomes null.
+              // However, the primary goal is to have locationName always populated.
+              Text(
+                'Location: Unknown Location (Refresh Profile in Edit Screen)', // Suggest action
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.red),
               ),
             ],
           ),
         ],
+        // --- END CHANGED BLOCK ---
         if (user.bio != null) ...[
           const SizedBox(height: 12),
           Padding(
@@ -166,6 +168,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ],
     );
   }
+
   Widget _buildStatsRow(BuildContext context, UserModel user) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -208,7 +211,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       String value,
       IconData icon,
       Color iconColor,
-      ) {
+      )
+  {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 6),
@@ -262,7 +266,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () => NavigationHelper.navigateToExchangeRequests(context),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 5),
         Card(
           elevation: 4,
           shape: RoundedRectangleBorder(
@@ -271,7 +275,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ListTile(
             leading: Icon(
               Icons.star,
-              color: Theme.of(context).colorScheme.secondary,
+              color: Colors.amber,
             ),
             title: const Text('Reviews'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -283,50 +287,83 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSkillsSection(BuildContext context, String title, List<String> skills) {
+    final bool isTeaching = title.toLowerCase().contains('teach');
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 0), // Brings it into line with rest of screen
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 🧾 Section Heading
           Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          Divider(
+            thickness: 2,
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.6),
+            endIndent: 240,
+          ),
+          const SizedBox(height: 16),
+
+          // 🔲 Empty state or List view
           skills.isEmpty
-              ? Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            elevation: 0,
-            color: Colors.grey[100],
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'No ${title.toLowerCase().contains('teach') ? 'skills to teach' : 'skills to learn'} yet.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              ? Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.1), // Use a lighter color for visibility
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'No ${isTeaching ? 'skills to teach' : 'skills to learn'} yet.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
               ),
             ),
           )
-              : Align(
-            alignment: Alignment.centerLeft,
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: skills.take(5).map((skill) {
-                return Chip(
-                  label: Text(
-                    skill,
-                    style: const TextStyle(fontSize: 15, color: Colors.white),
+              : Column(
+            children: skills.take(5).map((skill) {
+              // ⭐️ This is the updated code to match the Quick Actions UI
+              return Card(
+                // Match the elevation and border radius
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                // Add a margin to space the cards, similar to your original design
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  // Use the icon from your original skills section
+                  leading: Icon(
+                    Icons.check_circle_outline,
+                    // ⚠️ Note: I am setting the icon color to the secondary color for better visibility.
+                    // In your original code, the icon and background had the same primary color, which made the icon invisible.
+                    color: Theme.of(context).colorScheme.secondary,
                   ),
-                  backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.8),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                );
-              }).toList(),
-            ),
+                  title: Text(
+                    skill,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                  // You can add a trailing icon to match Quick Actions, if you want.
+                  // trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    // Add your onTap logic here if needed
+                  },
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
     );
   }
+
+
+
 }

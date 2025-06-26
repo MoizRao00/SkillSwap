@@ -1,8 +1,5 @@
-// lib/screens/exchange/exchange_requests_list_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:skillswap/theme/app_theme.dart'; // Ensure this import is correct
 import '../../models/exchange_request.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/animation/fade_animation.dart';
@@ -66,7 +63,7 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
             child: Card(
               margin: EdgeInsets.zero,
               elevation: 8.0,
-              shadowColor: Colors.black.withOpacity(0.4),
+              shadowColor: Colors.black.withValues(alpha: 0.4),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -97,7 +94,7 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
                     controller: _tabController,
                     indicatorColor: primaryColor, // Indicator line below the selected tab
                     labelColor: primaryColor, // Color for selected tab's icon/text
-                    unselectedLabelColor: onSurfaceColor.withOpacity(0.7), // Muted color for unselected tabs
+                    unselectedLabelColor: onSurfaceColor.withValues(alpha: 0.7), // Muted color for unselected tabs
                     indicatorSize: TabBarIndicatorSize.tab, // Indicator covers the whole tab
 
                     // Font styles for tabs
@@ -115,9 +112,9 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.inbox, color: _tabController.index == 0 ? primaryColor : onSurfaceColor.withOpacity(0.7)),
+                            Icon(Icons.inbox, color: _tabController.index == 0 ? primaryColor : onSurfaceColor.withValues(alpha: 0.7),),
                             const SizedBox(width: 8),
-                            Text('Received', style: TextStyle(color: _tabController.index == 0 ? primaryColor : onSurfaceColor.withOpacity(0.7))),
+                            Text('Received', style: TextStyle(color: _tabController.index == 0 ? primaryColor : onSurfaceColor.withValues(alpha: 0.7))),
                             StreamBuilder<List<ExchangeRequest>>(
                               stream: _fs.getExchangeRequests(
                                 userId: currentUser.uid,
@@ -156,9 +153,9 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.outbox, color: _tabController.index == 1 ? primaryColor : onSurfaceColor.withOpacity(0.7)),
+                            Icon(Icons.outbox, color: _tabController.index == 1 ? primaryColor : onSurfaceColor.withValues(alpha: 0.7)),
                             const SizedBox(width: 8),
-                            Text('Sent', style: TextStyle(color: _tabController.index == 1 ? primaryColor : onSurfaceColor.withOpacity(0.7))),
+                            Text('Sent', style: TextStyle(color: _tabController.index == 1 ? primaryColor : onSurfaceColor.withValues(alpha: 0.7))),
                           ],
                         ),
                       ),
@@ -261,7 +258,7 @@ class _RequestsListState extends State<_RequestsList> {
                   Icon(
                     widget.isReceived ? Icons.inbox : Icons.outbox,
                     size: 64,
-                    color: Colors.grey.withOpacity(0.5),
+                    color: Colors.grey.withValues(alpha: 0.5),
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -279,7 +276,7 @@ class _RequestsListState extends State<_RequestsList> {
                     style: Theme.of(
                       context,
                     ).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                   ),
                 ],
@@ -326,7 +323,7 @@ class _ExchangeRequestCard extends StatelessWidget {
     final Color primaryColor = Theme.of(context).colorScheme.primary;
     final Color onPrimaryColor = Theme.of(context).colorScheme.onPrimary;
     final Color onSurfaceColor = Theme.of(context).colorScheme.onSurface;
-    final Color tertiaryColor = Theme.of(context).colorScheme.tertiary ?? Colors.orange; // Fallback for tertiary
+    final Color tertiaryColor = Theme.of(context).colorScheme.tertiary ?? Colors.orange;
     final Color errorColor = Theme.of(context).colorScheme.error;
 
 
@@ -438,7 +435,7 @@ class _ExchangeRequestCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.1),
+        color: statusColor.withValues(alpha: 0.1),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)), // Retain top rounded corners for card
       ),
       child: Row(
@@ -455,7 +452,7 @@ class _ExchangeRequestCard extends StatelessWidget {
           const Spacer(),
           Text(
             _formatDate(request.createdAt),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withOpacity(0.7)),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withValues(alpha: 0.7)),
           ),
         ],
       ),
@@ -479,7 +476,7 @@ class _ExchangeRequestCard extends StatelessWidget {
                   children: [
                     Text(
                       isReceived ? 'They\'ll teach:' : 'You\'ll teach:',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withOpacity(0.7)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withValues(alpha: 0.7)),
                     ),
                     Text(
                       request.senderSkill,
@@ -488,14 +485,14 @@ class _ExchangeRequestCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.swap_horiz, color: onSurfaceColor.withOpacity(0.7)),
+              Icon(Icons.swap_horiz, color: onSurfaceColor.withValues(alpha: 0.7)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
                       isReceived ? 'You\'ll teach:' : 'They\'ll teach:',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withOpacity(0.7)),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: onSurfaceColor.withValues(alpha: 0.7)),
                     ),
                     Text(
                       request.receiverSkill,
@@ -509,7 +506,7 @@ class _ExchangeRequestCard extends StatelessWidget {
           ),
           if (request.message.isNotEmpty) ...[
             const SizedBox(height: 16),
-            Text('Message:', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onSurfaceColor.withOpacity(0.8))),
+            Text('Message:', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onSurfaceColor.withValues(alpha: 0.8))),
             const SizedBox(height: 4),
             Text(request.message, style: TextStyle(color: onSurfaceColor)),
           ],
@@ -518,7 +515,7 @@ class _ExchangeRequestCard extends StatelessWidget {
             if (request.location != null)
               Row(
                 children: [
-                  Icon(Icons.location_on, size: 16, color: onSurfaceColor.withOpacity(0.7)),
+                  Icon(Icons.location_on, size: 16, color: onSurfaceColor.withValues(alpha: 0.7)),
                   const SizedBox(width: 4),
                   Text(request.location!, style: TextStyle(color: onSurfaceColor)),
                 ],
@@ -526,7 +523,7 @@ class _ExchangeRequestCard extends StatelessWidget {
             if (request.scheduledDate != null)
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: onSurfaceColor.withOpacity(0.7)),
+                  Icon(Icons.calendar_today, size: 16, color: onSurfaceColor.withValues(alpha: 0.7)),
                   const SizedBox(width: 4),
                   Text(_formatDate(request.scheduledDate!), style: TextStyle(color: onSurfaceColor)),
                 ],

@@ -153,10 +153,8 @@ class UserProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        // Convert GeoPoint to a string for display
-                        'Lat: ${user.location!.latitude.toStringAsFixed(4)}, ' // Format to 4 decimal places
-                            'Lng: ${user.location!.longitude.toStringAsFixed(4)}', // Format to 4 decimal places
-                        style: const TextStyle(color: Colors.white),
+                        '${user.locationName!}',
+                        style: TextStyle(color: Colors.white)
                       ),
                     ],
                   ),
@@ -240,7 +238,8 @@ class UserProfileScreen extends StatelessWidget {
       String value,
       IconData icon,
       Color color,
-      ) {
+      )
+  {
     return Column(
       children: [
         Icon(icon, color: color),
@@ -282,7 +281,8 @@ class UserProfileScreen extends StatelessWidget {
       String title,
       List<String> skills,
       IconData icon,
-      ) {
+      )
+  {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

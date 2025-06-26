@@ -33,8 +33,10 @@ dependencies:
   cached_network_image: ^3.4.1
   rxdart: ^0.27.7
   dart_geohash: ^2.1.0
+  geocoding: ^2.2.1
   geolocator: ^14.0.1
   location_iq: ^1.1.4
+  flutter_typeahead: ^5.2.0
   flutter_launcher_icons: ^0.14.4
 
 flutter_launcher_icons:

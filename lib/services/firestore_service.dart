@@ -1,8 +1,11 @@
 // lib/services/firestore_service.dart
 
+import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:http/http.dart' as http;
 import 'package:rxdart/rxdart.dart';
 import 'package:dart_geohash/dart_geohash.dart';
 
@@ -14,6 +17,7 @@ import '../models/potfolio_item.dart';
 import '../models/review_model.dart';
 import '../models/skill_model.dart';
 import '../models/usermodel.dart';
+import 'fcm_services.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -27,70 +31,193 @@ class FirestoreService {
 
   String? get currentUserId => FirebaseAuth.instance.currentUser?.uid;
 
-  // --- Exchange Request Methods ---
-  Stream<List<ExchangeRequest>> getExchangeRequests({
+   // Notfication
+
+  Future<void> sendNotificationToUser(
+      {
     required String userId,
-    required bool isReceived,
-  }) {
-    return _firestore
-        .collection('exchanges')
-        .where(isReceived ? 'receiverId' : 'senderId', isEqualTo: userId)
-        .snapshots()
-        .map((snapshot) =>
-        snapshot.docs
-            .map((doc) =>
-            ExchangeRequest.fromMap({...doc.data(), 'id': doc.id}))
-            .toList());
+    required String title,
+    required String body,
+  })
+  async {
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final fcmToken = userDoc.data()?['fcmToken'];
+
+      if (fcmToken != null) {
+        await FCMService.sendPushMessage(
+          token: fcmToken,
+          title: title,
+          body: body,
+        );
+      } else {
+        print('⚠️ No FCM token found for user: $userId');
+      }
+    } catch (e) {
+      print('❌ Error sending notification: $e');
+    }
   }
 
-  Future<bool> createExchangeRequest({
+  // For Exchange Requests
+  Future<void> sendExchangeNotification(ExchangeRequest request) async {
+    switch (request.status) {
+      case ExchangeStatus.pending:
+        await sendNotificationToUser(
+          userId: request.receiverId,
+          title: 'New Exchange Request',
+          body: 'Someone wants to exchange ${request.senderSkill} for ${request.receiverSkill}',
+        );
+        break;
+
+      case ExchangeStatus.accepted:
+        await sendNotificationToUser(
+          userId: request.senderId,
+          title: 'Request Accepted',
+          body: 'Your exchange request has been accepted!',
+        );
+        break;
+
+      case ExchangeStatus.completed:
+      // Notify both parties
+        await Future.wait([
+          sendNotificationToUser(
+            userId: request.senderId,
+            title: 'Exchange Completed',
+            body: 'Your exchange has been completed successfully!',
+          ),
+          sendNotificationToUser(
+            userId: request.receiverId,
+            title: 'Exchange Completed',
+            body: 'Your exchange has been completed successfully!',
+          ),
+        ]);
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  // For Chat Messages
+  Future<void> sendChatNotification({
+    required String receiverId,
+    required String senderName,
+    required String message,
+  })
+  async {
+    await sendNotificationToUser(
+      userId: receiverId,
+      title: 'New Message from $senderName',
+      body: message,
+    );
+  }
+
+  // For Reviews
+  Future<void> sendReviewNotification({
+    required String userId,
+    required double rating,
+  })
+  async {
+    await sendNotificationToUser(
+      userId: userId,
+      title: 'New Review Received',
+      body: 'You received a ${rating.toStringAsFixed(1)} star review!',
+    );
+  }
+
+  // Exchange Request Methods ---
+  Stream<ExchangeRequest> getExchangeStream(String exchangeId) {
+    return _firestore
+        .collection('exchanges')
+        .doc(exchangeId)
+        .snapshots()
+        .map((doc) => ExchangeRequest.fromMap(
+      doc.data() as Map<String, dynamic>,
+      doc.id,
+    ));
+  }
+
+  Future<bool> sendExchangeRequest({
     required String receiverId,
     required String senderSkill,
     required String receiverSkill,
     required String message,
-    String? location, // This `location` is a String, not GeoPoint. Renamed to `locationText` for clarity
+    String? location,
     DateTime? scheduledDate,
   }) async {
     try {
       final sender = FirebaseAuth.instance.currentUser;
       if (sender == null) return false;
 
+      // Check for duplicates
+      final duplicateCheck = await _firestore
+          .collection('exchanges')
+          .where('senderId', isEqualTo: sender.uid)
+          .where('receiverId', isEqualTo: receiverId)
+          .where('senderSkill', isEqualTo: senderSkill)
+          .where('receiverSkill', isEqualTo: receiverSkill)
+          .where('status', whereIn: ['pending', 'accepted', 'confirmedBySender', 'confirmedByReceiver'])
+          .get();
+
+      if (duplicateCheck.docs.isNotEmpty) {
+        print("⚠️ Duplicate request detected");
+        return false;
+      }
+
+      // Create exchange request
       final docRef = _firestore.collection('exchanges').doc();
-      final request = ExchangeRequest(
-        id: docRef.id,
-        senderId: sender.uid,
-        receiverId: receiverId,
-        senderSkill: senderSkill,
-        receiverSkill: receiverSkill,
-        message: message,
-        createdAt: DateTime.now(),
-        // This `location` in ExchangeRequest refers to the text input field from the UI
-        location: location, // Still using this for the message/request's preferred location
-        scheduledDate: scheduledDate,
-        status: ExchangeStatus.pending,
-      );
+      final batch = _firestore.batch();
 
-      await docRef.set(request.toMap());
+      final exchangeData = {
+        'senderId': sender.uid,
+        'receiverId': receiverId,
+        'senderSkill': senderSkill,
+        'receiverSkill': receiverSkill,
+        'status': ExchangeStatus.pending.name,
+        'createdAt': FieldValue.serverTimestamp(),
+        'location': location?.isEmpty ?? true ? null : location,
+        'scheduledDate': scheduledDate != null ? Timestamp.fromDate(scheduledDate) : null,
+      };
 
-      await createActivity(
-        userId: receiverId,
-        type: ActivityType.exchangeRequest,
-        title: 'New Exchange Request',
-        description: 'Someone wants to exchange $senderSkill for $receiverSkill',
-        data: {
+      batch.set(docRef, exchangeData);
+
+      // Add message if provided
+      if (message.isNotEmpty) {
+        final messageRef = docRef.collection('messages').doc();
+        final messageData = {
+          'senderId': sender.uid,
+          'text': message.trim(),
+          'timestamp': FieldValue.serverTimestamp(),
+        };
+        batch.set(messageRef, messageData);
+      }
+
+      // Create notification
+      final notificationRef = _firestore.collection('notifications').doc();
+      final notificationData = {
+        'userId': receiverId,
+        'title': 'New Exchange Request',
+        'message': 'Someone wants to exchange ${senderSkill} for ${receiverSkill}',
+        'type': NotificationType.exchangeRequest.name,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'data': {
           'exchangeId': docRef.id,
           'senderId': sender.uid,
           'senderSkill': senderSkill,
           'receiverSkill': receiverSkill,
         },
-      );
+      };
+      batch.set(notificationRef, notificationData);
 
+      await batch.commit();
       return true;
     } catch (e) {
-      print('❌ Error creating exchange request: $e');
+      print('❌ sendExchangeRequest error: $e');
       return false;
     }
   }
+
 
   Stream<List<ExchangeRequest>> getUserExchangeRequests() {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -107,80 +234,102 @@ class FirestoreService {
           .get();
 
       final requests = [
-        ...sent.docs.map((doc) => ExchangeRequest.fromMap(doc.data())),
-        ...received.docs.map((doc) => ExchangeRequest.fromMap(doc.data())),
+
+        ...sent.docs.map((doc) => ExchangeRequest.fromMap(doc.data() as Map<String, dynamic>, doc.id)),
+
+        ...received.docs.map((doc) => ExchangeRequest.fromMap(doc.data() as Map<String, dynamic>, doc.id)),
       ];
 
       return requests..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     });
   }
 
-  Future<bool> updateExchangeStatus(
-      String exchangeId,
-      ExchangeStatus status,
-      ) async {
+  Future<bool> updateExchangeStatus(String exchangeId, ExchangeStatus newStatus) async {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUserId == null) return false;
+
     try {
-      await _firestore.collection('exchanges').doc(exchangeId).update({
-        'status': status.toString(),
-      });
+      final docRef = _firestore.collection('exchanges').doc(exchangeId);
+      final doc = await docRef.get();
+      if (!doc.exists) return false;
 
+      final data = doc.data()!;
+      final currentStatus = data['status'] as String;
+      final senderId = data['senderId'] as String;
+      final receiverId = data['receiverId'] as String;
+
+      String updateTo = newStatus.name;
+
+      // Handle completion logic
+      if (newStatus == ExchangeStatus.completed) {
+        if (currentStatus == ExchangeStatus.accepted.name) {
+          updateTo = currentUserId == senderId
+              ? ExchangeStatus.confirmedBySender.name
+              : ExchangeStatus.confirmedByReceiver.name;
+        } else if (currentStatus == ExchangeStatus.confirmedBySender.name &&
+            currentUserId == receiverId) {
+          updateTo = ExchangeStatus.completed.name;
+          await _updateExchangeCompletion(senderId, receiverId);
+        } else if (currentStatus == ExchangeStatus.confirmedByReceiver.name &&
+            currentUserId == senderId) {
+          updateTo = ExchangeStatus.completed.name;
+          await _updateExchangeCompletion(senderId, receiverId);
+        }
+      }
+
+      await docRef.update({'status': updateTo});
+
+      // Create notifications based on status change
+      if (updateTo == ExchangeStatus.confirmedBySender.name) {
+        await createNotification(
+          userId: receiverId,
+          title: 'Exchange Completion Requested',
+          message: 'The sender has marked the exchange as complete. Please confirm if you agree.',
+          type: NotificationType.exchangeRequest,
+          data: {'exchangeId': exchangeId},
+        );
+      } else if (updateTo == ExchangeStatus.confirmedByReceiver.name) {
+        await createNotification(
+          userId: senderId,
+          title: 'Exchange Completion Requested',
+          message: 'The receiver has marked the exchange as complete. Please confirm if you agree.',
+          type: NotificationType.exchangeRequest,
+          data: {'exchangeId': exchangeId},
+        );
+      } else if (updateTo == ExchangeStatus.completed.name) {
+        // Notify both parties
+        await Future.wait([
+          createNotification(
+            userId: senderId,
+            title: 'Exchange Completed',
+            message: 'Your exchange has been completed successfully!',
+            type: NotificationType.exchangeCompleted,
+            data: {'exchangeId': exchangeId},
+          ),
+          createNotification(
+            userId: receiverId,
+            title: 'Exchange Completed',
+            message: 'Your exchange has been completed successfully!',
+            type: NotificationType.exchangeCompleted,
+            data: {'exchangeId': exchangeId},
+          ),
+        ]);
+      } else if (updateTo == ExchangeStatus.accepted.name) {
+        await createNotification(
+          userId: senderId,
+          title: 'Exchange Request Accepted',
+          message: 'Your exchange request has been accepted!',
+          type: NotificationType.exchangeAccepted,
+          data: {'exchangeId': exchangeId},
+        );
+      }
       final exchange = await _firestore.collection('exchanges').doc(exchangeId).get();
-      final exchangeData = exchange.data();
-      if (exchangeData == null) return true;
-
-      switch (status) {
-        case ExchangeStatus.accepted:
-          await createActivity(
-            userId: exchangeData['senderId'],
-            type: ActivityType.exchangeAccepted,
-            title: 'Exchange Request Accepted',
-            description: 'Your exchange request has been accepted',
-            data: {
-              'exchangeId': exchangeId,
-              'receiverId': exchangeData['receiverId'],
-            },
-          );
-          break;
-
-        case ExchangeStatus.completed:
-          await createActivity(
-            userId: exchangeData['senderId'],
-            type: ActivityType.exchangeCompleted,
-            title: 'Exchange Completed',
-            description: 'Skill exchange completed successfully',
-            data: {
-              'exchangeId': exchangeId,
-              'receiverId': exchangeData['receiverId'],
-            },
-          );
-          await createActivity(
-            userId: exchangeData['receiverId'],
-            type: ActivityType.exchangeCompleted,
-            title: 'Exchange Completed',
-            description: 'Skill exchange completed successfully',
-            data: {
-              'exchangeId': exchangeId,
-              'senderId': exchangeData['senderId'],
-            },
-          );
-          break;
-
-        case ExchangeStatus.declined:
-          await createActivity(
-            userId: exchangeData['senderId'],
-            type: ActivityType.exchangeDeclined,
-            title: 'Exchange Request Declined',
-            description: 'Your exchange request was declined',
-            data: {
-              'exchangeId': exchangeId,
-              'receiverId': exchangeData['receiverId'],
-            },
-          );
-          break;
-
-        case ExchangeStatus.pending:
-        case ExchangeStatus.cancelled:
-          break;
+      if (exchange.exists) {
+        final request = ExchangeRequest.fromMap(
+          exchange.data() as Map<String, dynamic>,
+          exchange.id,
+        );
+        await sendExchangeNotification(request);
       }
 
       return true;
@@ -189,6 +338,25 @@ class FirestoreService {
       return false;
     }
   }
+// Helper method for exchange completion
+  Future<void> _updateExchangeCompletion(String senderId, String receiverId) async {
+    final batch = _firestore.batch();
+
+    // Update sender's stats
+    final senderRef = _firestore.collection('users').doc(senderId);
+    batch.update(senderRef, {
+      'totalExchanges': FieldValue.increment(1),
+    });
+
+    // Update receiver's stats
+    final receiverRef = _firestore.collection('users').doc(receiverId);
+    batch.update(receiverRef, {
+      'totalExchanges': FieldValue.increment(1),
+    });
+
+    await batch.commit();
+  }
+
 
   // --- User Management Methods ---
 
@@ -249,6 +417,25 @@ class FirestoreService {
       print('❌ Error saving user: $e');
       return false;
     }
+  }
+
+  Future<void> deleteExchange(String exchangeId) async {
+    final exchangeRef = _firestore.collection('exchanges').doc(exchangeId);
+
+    // Use a WriteBatch to perform multiple deletions atomically
+    final batch = _firestore.batch();
+
+    // 1. Delete all messages in the subcollection
+    final messagesSnapshot = await exchangeRef.collection('messages').get();
+    for (var doc in messagesSnapshot.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // 2. Delete the main exchange document
+    batch.delete(exchangeRef);
+
+    // Commit the batch to run all deletes
+    await batch.commit();
   }
 
   Future<UserModel?> getUser(String uid) async {
@@ -312,7 +499,29 @@ class FirestoreService {
       return false;
     }
   }
+  Future<bool> ensureUserDocumentExists() async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return false;
 
+      final userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+
+      if (!userDoc.exists) {
+        print('Creating user document for ${currentUser.uid}');
+        await createUserDocument(
+          currentUser.uid,
+          currentUser.displayName ?? 'New User',
+          currentUser.email ?? '',
+        );
+        return true;
+      }
+
+      return true;
+    } catch (e) {
+      print('❌ Error ensuring user document exists: $e');
+      return false;
+    }
+  }
   // You have createUserDocument. Ensure it also initializes locationName to null.
   Future<void> createUserDocument(String uid, String name, String email) async {
     final now = DateTime.now();
@@ -475,21 +684,44 @@ class FirestoreService {
 
   // --- Chat Message Methods ---
 
-  Future<bool> sendMessage(String exchangeId, String message) async {
+  Future<bool> sendMessage(String exchangeId, String text) async {
     try {
       final sender = FirebaseAuth.instance.currentUser;
       if (sender == null) return false;
 
-      final docRef = _firestore.collection('exchanges').doc(exchangeId).collection('messages').doc();
+      final docRef = _firestore
+          .collection('exchanges')
+          .doc(exchangeId)
+          .collection('messages')
+          .doc();
 
       final chatMessage = ChatMessage(
         id: docRef.id,
+        exchangeId: exchangeId,
         senderId: sender.uid,
-        message: message,
+        text: text,
         timestamp: DateTime.now(),
       );
 
       await docRef.set(chatMessage.toMap());
+
+      // Get exchange details
+      final exchangeDoc = await _firestore.collection('exchanges').doc(exchangeId).get();
+      final exchangeData = exchangeDoc.data();
+
+      if (exchangeData != null) {
+        final receiverId = sender.uid == exchangeData['senderId']
+            ? exchangeData['receiverId']
+            : exchangeData['senderId'];
+
+        // Send notification
+        await sendChatNotification(
+          receiverId: receiverId,
+          senderName: sender.displayName ?? 'sender',
+          message: text,
+        );
+      }
+
       return true;
     } catch (e) {
       print('❌ Error sending message: $e');
@@ -505,10 +737,9 @@ class FirestoreService {
         .orderBy('timestamp', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-        .map((doc) => ChatMessage.fromMap({...doc.data(), 'id': doc.id}))
+        .map((doc) => ChatMessage.fromMap(doc.data() as Map<String, dynamic>, doc.id)) // ⭐ Pass map and doc.id separately
         .toList());
   }
-
   Future<void> markMessagesAsRead(String exchangeId, String currentUserId) async {
     try {
       final messagesQuery = await _firestore
@@ -529,42 +760,36 @@ class FirestoreService {
     }
   }
 
-  // --- Review Methods ---
 
+  Stream<List<ExchangeRequest>> getExchangeRequests({
+    required String userId,
+    required bool isReceived,
+  }) {
+    return _firestore
+        .collection('exchanges')
+        .where(isReceived ? 'receiverId' : 'senderId', isEqualTo: userId)
+        .snapshots()
+        .map((snapshot) =>
+        snapshot.docs
+            .map((doc) =>
+            ExchangeRequest.fromMap(doc.data() as Map<String, dynamic>, doc.id)) // ⭐ Corrected call
+            .toList());
+  }
   Future<bool> submitReview({
     required String exchangeId,
     required String reviewedUserId,
     required double rating,
     required String comment,
-  }) async
-  {
+  }) async {
     try {
       final reviewer = FirebaseAuth.instance.currentUser;
-      if (reviewer == null) return false;
+      if (reviewer == null || comment.trim().length < 10) return false;
 
-      final docRef = _firestore.collection('reviews').doc();
-      final review = Review(
-        id: docRef.id,
-        exchangeId: exchangeId,
-        reviewerId: reviewer.uid,
-        reviewedUserId: reviewedUserId,
-        rating: rating,
-        comment: comment,
-        createdAt: DateTime.now(),
-      );
+      // ... rest of your code ...
 
-      await docRef.set(review.toMap());
-
-      await createActivity(
+      await sendReviewNotification(
         userId: reviewedUserId,
-        type: ActivityType.newReview,
-        title: 'New Review Received',
-        description: 'Someone left you a review',
-        data: {
-          'reviewId': docRef.id,
-          'exchangeId': exchangeId,
-          'rating': rating,
-        },
+        rating: rating,
       );
 
       return true;
@@ -573,7 +798,6 @@ class FirestoreService {
       return false;
     }
   }
-
   Stream<List<Review>> getUserReviews(String userId) {
     return _firestore
         .collection('reviews')
@@ -613,35 +837,56 @@ class FirestoreService {
   async {
     try {
       final docRef = _firestore.collection('notifications').doc();
-      final notification = NotificationModel(
-        id: docRef.id,
-        userId: userId,
-        title: title,
-        message: message,
-        type: type,
-        timestamp: DateTime.now(),
-        data: data,
-      );
+      final notificationData = {
+        'id': docRef.id,
+        'userId': userId,
+        'title': title,
+        'message': message,
+        'type': type.toString(), // Using toString() to match your model
+        'timestamp': DateTime.now().toIso8601String(), // Using ISO string format
+        'isRead': false,
+        'data': data,
+      };
 
-      await docRef.set(notification.toMap());
+      print('DEBUG: Creating notification: $notificationData');
+      await docRef.set(notificationData);
+      print('✅ Notification created successfully');
     } catch (e) {
       print('❌ Error creating notification: $e');
     }
   }
 
   Stream<List<NotificationModel>> getUserNotifications(String userId) {
+    print('DEBUG: Fetching notifications for user: $userId');
+
     return _firestore
         .collection('notifications')
         .where('userId', isEqualTo: userId)
         .orderBy('timestamp', descending: true)
         .snapshots()
-        .map((snapshot) =>
-        snapshot.docs.map((doc) => NotificationModel.fromMap(doc.data())).toList());
+        .map((snapshot) {
+      try {
+        return snapshot.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          print('DEBUG: Processing notification: ${doc.id}');
+          return NotificationModel.fromMap(data);
+        }).toList();
+      } catch (e) {
+        print('❌ Error processing notifications: $e');
+        return <NotificationModel>[];
+      }
+    });
   }
 
   Future<void> markNotificationAsRead(String notificationId) async {
     try {
-      await _firestore.collection('notifications').doc(notificationId).update({'isRead': true});
+      print('DEBUG: Marking notification as read: $notificationId');
+      await _firestore
+          .collection('notifications')
+          .doc(notificationId)
+          .update({'isRead': true});  // Using 'isRead' consistently
+      print('✅ Notification marked as read');
     } catch (e) {
       print('❌ Error marking notification as read: $e');
     }
@@ -649,33 +894,99 @@ class FirestoreService {
 
   // NEWLY ADDED METHOD
   Future<void> markAllNotificationsAsRead(String userId) async {
-    try {
-      final notificationsQuery = await _firestore
-          .collection('notifications')
-          .where('userId', isEqualTo: userId)
-          .where('isRead', isEqualTo: false) // Only unread ones
-          .get();
+    final batch = _firestore.batch();
+    final notifications = await _firestore
+        .collection('notifications')
+        .where('userId', isEqualTo: userId)
+        .where('isRead', isEqualTo: false)
+        .get();
 
-      final batch = _firestore.batch();
-      for (var doc in notificationsQuery.docs) {
-        batch.update(doc.reference, {'isRead': true});
-      }
+    for (var doc in notifications.docs) {
+      batch.update(doc.reference, {'isRead': true});
+    }
+    if (notifications.docs.isNotEmpty) {
       await batch.commit();
-      print('✅ All notifications marked as read for user: $userId');
+      print('✅ Marked ${notifications.docs.length} notifications as read.');
+    } else {
+      print('⚠️ No unread notifications found.');
+    }
+  }
+
+
+
+  Future<void> saveFCMToken(String userId, String token) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'fcmToken': token,
+      });
+      print('✅ FCM Token saved successfully for user: $userId');
     } catch (e) {
-      print('❌ Error marking all notifications as read: $e');
+      print('❌ Error saving FCM token: $e');
+    }
+  }
+
+  Future<void> verifyFCMSetup() async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        print('❌ No user logged in to verify FCM');
+        return;
+      }
+
+      // Get FCM token
+      final fcmToken = await FirebaseMessaging.instance.getToken();
+      print('Current FCM Token: $fcmToken');
+
+      // Check if token is saved in Firestore
+      final userDoc = await _firestore.collection('users').doc(currentUser.uid).get();
+      final savedToken = userDoc.data()?['fcmToken'];
+
+      if (savedToken == fcmToken) {
+        print('✅ FCM Token verified and matched in Firestore');
+      } else {
+        print('⚠️ FCM Token mismatch, updating...');
+        await saveFCMToken(currentUser.uid, fcmToken!);
+      }
+    } catch (e) {
+      print('❌ Error verifying FCM setup: $e');
     }
   }
 
   Future<void> deleteNotification(String notificationId) async {
     try {
+      print('DEBUG: Deleting notification: $notificationId');
       await _firestore.collection('notifications').doc(notificationId).delete();
+      print('✅ Notification deleted');
     } catch (e) {
       print('❌ Error deleting notification: $e');
     }
   }
-
   // --- Activity Methods ---
+
+  Stream<List<Activity>> getUserActivities(String userId) {
+    print('DEBUG: Fetching activities for user: $userId');
+
+    return _firestore
+        .collection('activities')
+        .where('userId', isEqualTo: userId)
+        .orderBy('timestamp', descending: true)
+        .limit(20)
+        .snapshots()
+        .map((snapshot) {
+      try {
+        return snapshot.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          print('DEBUG: Processing activity: ${doc.id}');
+          return Activity.fromMap(data);
+        }).toList();
+      } catch (e) {
+        print('❌ Error processing activities: $e');
+        print('❌ Error stack trace: ${StackTrace.current}');
+        return <Activity>[];
+      }
+    });
+  }
 
   Future<void> createActivity({
     required String userId,
@@ -683,33 +994,28 @@ class FirestoreService {
     required String title,
     required String description,
     required Map<String, dynamic> data,
-  }) async {
+  })
+  async {
     try {
       final docRef = _firestore.collection('activities').doc();
-      final activity = Activity(
-        id: docRef.id,
-        userId: userId,
-        type: type,
-        title: title,
-        description: description,
-        timestamp: DateTime.now(),
-        data: data,
-      );
+      final activityData = {
+        'id': docRef.id,
+        'userId': userId,
+        'type': type.toString(),
+        'title': title,
+        'description': description,
+        'timestamp': FieldValue.serverTimestamp(),
+        'data': data,
+        'isRead': false,
+      };
 
-      await docRef.set(activity.toMap());
+      print('DEBUG: Creating activity: $activityData');
+      await docRef.set(activityData);
+      print('✅ Activity created successfully');
     } catch (e) {
       print('❌ Error creating activity: $e');
+      print('❌ Error stack trace: ${StackTrace.current}');
     }
-  }
-
-  Stream<List<Activity>> getUserActivities(String userId) {
-    return _firestore
-        .collection('activities')
-        .where('userId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
-        .limit(20)
-        .snapshots()
-        .map((snapshot) => snapshot.docs.map((doc) => Activity.fromMap(doc.data())).toList());
   }
 
   Future<void> markActivityAsRead(String activityId) async {

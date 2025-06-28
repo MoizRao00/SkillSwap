@@ -4,6 +4,8 @@ import '../../models/exchange_request.dart';
 import '../../services/firestore_service.dart';
 import '../../widgets/animation/fade_animation.dart';
 import '../../widgets/animation/slide_animation.dart';
+import '../../widgets/exchange/exchange_action_button.dart';
+import '../../widgets/exchange/exchange_status_card.dart';
 import '../chat/chat_screen.dart';
 import '../search/screen_search.dart';
 
@@ -56,10 +58,8 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
 
       body: Column(
         children: [
-
           Container(
-
-            padding: const EdgeInsets.only(top: 5),// L,T,R,B
+            padding: const EdgeInsets.only(top: 5),
             child: Card(
               margin: EdgeInsets.zero,
               elevation: 8.0,
@@ -185,18 +185,7 @@ class _ExchangeRequestsListScreenState extends State<ExchangeRequestsListScreen>
           ),
         ],
       ),
-      floatingActionButton: FadeAnimation(
-        child: FloatingActionButton.extended(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const SearchScreen()),
-            );
-          },
-          icon: const Icon(Icons.add),
-          label: const Text('New Exchange'),
-        ),
-      ),
+
     );
   }
 }
@@ -329,8 +318,6 @@ class _ExchangeRequestCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      // Card properties are typically handled by CardThemeData in app_theme.dart
-      // If you need specific overrides, you can apply them here.
       child: InkWell(
         onTap: () async {
           if (request.status == ExchangeStatus.accepted) {
@@ -349,13 +336,28 @@ class _ExchangeRequestCard extends StatelessWidget {
           }
         },
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHeader(context),
             _buildBody(context),
-            if (request.status == ExchangeStatus.pending && isReceived)
-              _buildActions(context),
-            if (request.status == ExchangeStatus.accepted)
-              _buildChatButton(context),
+            const SizedBox(height: 8),
+            // ✅ Exchange Status Label
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: ExchangeStatusCard(status: request.status),
+            ),
+            const SizedBox(height: 8),
+            // ✅ Universal Action Buttons (Accept, Decline, Cancel, Complete)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: ExchangeActionButtons(
+                request: request,
+                currentUserId: FirebaseAuth.instance.currentUser!.uid,
+                fs: firestoreService,
+              ),
+            ),
+
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -504,12 +506,6 @@ class _ExchangeRequestCard extends StatelessWidget {
               ),
             ],
           ),
-          if (request.message.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text('Message:', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: onSurfaceColor.withValues(alpha: 0.8))),
-            const SizedBox(height: 4),
-            Text(request.message, style: TextStyle(color: onSurfaceColor)),
-          ],
           if (request.location != null || request.scheduledDate != null) ...[
             const SizedBox(height: 16),
             if (request.location != null)
@@ -572,7 +568,7 @@ class _ExchangeRequestCard extends StatelessWidget {
   Color _getStatusColor(BuildContext context) {
     switch (request.status) {
       case ExchangeStatus.pending:
-        return Theme.of(context).colorScheme.tertiary ?? Colors.orange; // Use tertiary if defined, else orange
+        return Theme.of(context).colorScheme.tertiary ?? Colors.orange;
       case ExchangeStatus.accepted:
         return Theme.of(context).colorScheme.primary;
       case ExchangeStatus.completed:
@@ -580,6 +576,9 @@ class _ExchangeRequestCard extends StatelessWidget {
       case ExchangeStatus.declined:
       case ExchangeStatus.cancelled:
         return Theme.of(context).colorScheme.error;
+      case ExchangeStatus.confirmedBySender:
+      case ExchangeStatus.confirmedByReceiver:
+        return Colors.blueGrey; // A neutral color for 'waiting for confirmation'
     }
   }
 
@@ -594,6 +593,9 @@ class _ExchangeRequestCard extends StatelessWidget {
       case ExchangeStatus.declined:
       case ExchangeStatus.cancelled:
         return Icons.cancel;
+      case ExchangeStatus.confirmedBySender:
+      case ExchangeStatus.confirmedByReceiver:
+        return Icons.hourglass_empty; // An icon for waiting/pending confirmation
     }
   }
 

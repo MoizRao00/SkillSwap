@@ -1,11 +1,9 @@
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../models/exchange_request.dart';
 import '../../models/chat_message.dart';
-import '../../models/usermodel.dart';
+import '../../models/usermodel.dart'; // Make sure this is the correct model for your UserProfile
 import '../../services/firestore_service.dart';
-
 
 class ChatScreen extends StatefulWidget {
   final ExchangeRequest exchange;
@@ -22,7 +20,6 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final FirestoreService _fs = FirestoreService();
@@ -36,11 +33,355 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
+  void _showReviewDialog(BuildContext context, String exchangeId, String otherUserId) {
+    final _reviewController = TextEditingController();
+    int _selectedRating = 5; // Default rating
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Leave a Review'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        icon: Icon(
+                          index < _selectedRating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _selectedRating = index + 1;
+                          });
+                        },
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _reviewController,
+                    decoration: const InputDecoration(
+                      labelText: 'Write your review (optional)',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await _fs.submitReview(
+                      exchangeId: exchangeId,
+                      reviewedUserId: otherUserId,
+                      rating: _selectedRating.toDouble(),
+                      comment: _reviewController.text.trim(),
+                    );
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Review submitted!')),
+                      );
+                    }
+                  },
+                  child: const Text('Submit'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Color _getStatusColor(ExchangeStatus status) {
+    switch (status) {
+      case ExchangeStatus.pending:
+        return Colors.orange;
+      case ExchangeStatus.accepted:
+        return Colors.green;
+      case ExchangeStatus.completed:
+        return Colors.blue;
+      case ExchangeStatus.declined:
+      case ExchangeStatus.cancelled:
+        return Colors.red;
+      case ExchangeStatus.confirmedBySender:
+      case ExchangeStatus.confirmedByReceiver:
+        return Colors.blueGrey;
+    }
+  }
+
+  IconData _getStatusIcon(ExchangeStatus status) {
+    switch (status) {
+      case ExchangeStatus.pending:
+        return Icons.schedule;
+      case ExchangeStatus.accepted:
+        return Icons.check_circle;
+      case ExchangeStatus.completed:
+        return Icons.star;
+      case ExchangeStatus.declined:
+      case ExchangeStatus.cancelled:
+        return Icons.cancel;
+      case ExchangeStatus.confirmedBySender:
+      case ExchangeStatus.confirmedByReceiver:
+        return Icons.hourglass_empty;
+    }
+  }
+
+  String _getStatusText(ExchangeStatus status) {
+    final currentUserId = _currentUser?.uid;
+    final isSender = currentUserId == widget.exchange.senderId;
+
+    switch (status) {
+      case ExchangeStatus.pending:
+        return 'Exchange request is pending';
+      case ExchangeStatus.accepted:
+        return 'Exchange is active';
+      case ExchangeStatus.confirmedBySender:
+        if (isSender) {
+          return 'You have marked as complete. Awaiting confirmation from the other person.';
+        } else {
+          return 'The other person has marked as complete. Please confirm to finish.';
+        }
+      case ExchangeStatus.confirmedByReceiver:
+        if (isSender) {
+          return 'The other person has marked as complete. Please confirm to finish.';
+        } else {
+          return 'You have marked as complete. Awaiting confirmation from the other person.';
+        }
+      case ExchangeStatus.completed:
+        return 'Exchange completed';
+      case ExchangeStatus.declined:
+        return 'Exchange declined';
+      case ExchangeStatus.cancelled:
+        return 'Exchange cancelled';
+    }
+  }
+
+  Widget _buildActionButtons(ExchangeRequest exchange) {
+    final currentUserId = _currentUser?.uid;
+    if (currentUserId == null) return const SizedBox.shrink();
+
+    final status = exchange.status;
+    final isSender = currentUserId == exchange.senderId;
+    final isReceiver = currentUserId == exchange.receiverId;
+
+    if (status == ExchangeStatus.declined || status == ExchangeStatus.cancelled) {
+      return const SizedBox.shrink();
+    }
+
+    if (status == ExchangeStatus.pending && isReceiver) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _fs.updateExchangeStatus(exchange.id, ExchangeStatus.accepted),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Accept Exchange'),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () => _fs.updateExchangeStatus(exchange.id, ExchangeStatus.declined),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Decline'),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (status == ExchangeStatus.accepted) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () {
+            final newStatus = isSender ? ExchangeStatus.confirmedBySender : ExchangeStatus.confirmedByReceiver;
+            _fs.updateExchangeStatus(exchange.id, newStatus);
+          },
+          icon: const Icon(Icons.done_all),
+          label: const Text('Mark as Completed'),
+        ),
+      );
+    }
+
+    if (status == ExchangeStatus.confirmedBySender || status == ExchangeStatus.confirmedByReceiver) {
+      final hasConfirmed = (status == ExchangeStatus.confirmedBySender && isSender) || (status == ExchangeStatus.confirmedByReceiver && isReceiver);
+
+      if (hasConfirmed) {
+        return const Padding(
+          padding: EdgeInsets.symmetric(vertical: 16.0),
+          child: Text(
+            'You have confirmed completion. Waiting for the other person to confirm.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+          ),
+        );
+      } else {
+        return SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () => _fs.updateExchangeStatus(exchange.id, ExchangeStatus.completed),
+            icon: const Icon(Icons.check_circle),
+            label: const Text('Confirm Completion'),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+          ),
+        );
+      }
+    }
+
+    if (status == ExchangeStatus.completed) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => _showReviewDialog(context, exchange.id, widget.otherUser.uid),
+          icon: const Icon(Icons.rate_review),
+          label: const Text('Leave a Review'),
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  void _showDeleteConfirmationDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Exchange'),
+        content: const Text('Are you sure you want to delete this exchange? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              try {
+                await _fs.deleteExchange(widget.exchange.id);
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Exchange deleted successfully')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error deleting exchange: $e')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Future<void> _sendMessage() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty || _isSending) return;
+
+
+    setState(() {
+      _isSending = true;
+      _messageController.clear();
+    });
+
+    try {
+
+      await _fs.sendMessage(
+        widget.exchange.id,
+        message,
+      );
+
+
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          final maxScroll = _scrollController.position.maxScrollExtent;
+          final currentScroll = _scrollController.position.pixels;
+          if ((maxScroll - currentScroll).abs() < 100) {
+            _scrollController.animateTo(
+              _scrollController.position.minScrollExtent,
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+            );
+          }
+        }
+      });
+
+    } catch (e) {
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending message: $e')),
+        );
+      }
+    } finally {
+
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
+
+  void _showExchangeDetails(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _ExchangeDetailsSheet(exchange: widget.exchange, otherUser: widget.otherUser),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ⭐ REFACTORED: Use two separate StreamBuilders to prevent unnecessary rebuilds.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar:
-      AppBar(
+      appBar: AppBar(
         titleSpacing: 0,
         title: ListTile(
           contentPadding: EdgeInsets.zero,
@@ -58,10 +399,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           subtitle: Text(
             '${widget.exchange.senderSkill} ↔ ${widget.exchange.receiverSkill}',
-            style: Theme
-                .of(context)
-                .textTheme
-                .bodySmall,
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
         actions: [
@@ -69,40 +407,69 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.info_outline),
             onPressed: () => _showExchangeDetails(context),
           ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _showDeleteConfirmationDialog,
+          ),
         ],
       ),
-      body:
-      SafeArea(
+      body: SafeArea(
         child: Column(
           children: [
-            // Status Banner
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              color: _getStatusColor().withOpacity(0.1),
-              child: Row(
-                children: [
-                  Icon(
-                    _getStatusIcon(),
-                    size: 16,
-                    color: _getStatusColor(),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _getStatusText(),
-                    style: TextStyle(color: _getStatusColor()),
-                  ),
-                ],
-              ),
-            ),
+            // 1. This StreamBuilder handles the exchange status and action buttons.
+            StreamBuilder<ExchangeRequest>(
+              stream: _fs.getExchangeStream(widget.exchange.id),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+                  return const SizedBox.shrink();
+                }
 
-            // Messages List
+                final updatedExchange = snapshot.data!;
+
+                return Column(
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      color: _getStatusColor(updatedExchange.status).withOpacity(0.1),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _getStatusIcon(updatedExchange.status),
+                            size: 16,
+                            color: _getStatusColor(updatedExchange.status),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _getStatusText(updatedExchange.status),
+                              style: TextStyle(
+                                color: _getStatusColor(updatedExchange.status),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                      child: _buildActionButtons(updatedExchange),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const Divider(height: 1),
+            // 2. This separate StreamBuilder handles only the messages list.
             Expanded(
               child: StreamBuilder<List<ChatMessage>>(
                 stream: _fs.getMessages(widget.exchange.id),
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
+                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                    return const SizedBox(); // Removed circular loader
                   }
 
                   final messages = snapshot.data ?? [];
@@ -112,8 +479,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.chat_bubble_outline, size: 64,
-                              color: Colors.grey),
+                          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
                           SizedBox(height: 16),
                           Text('No messages yet'),
                         ],
@@ -129,23 +495,24 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (context, index) {
                       final message = messages[index];
                       final isMyMessage = message.senderId == _currentUser?.uid;
-                      return _MessageBubble(
-                        message: message,
-                        isMyMessage: isMyMessage,
+                      return AnimatedOpacity(
+                        opacity: 1.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: _MessageBubble(
+                          key: ValueKey(message.id),
+                          message: message,
+                          isMyMessage: isMyMessage,
+                        ),
                       );
                     },
                   );
                 },
               ),
             ),
-
-            // Message Input
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Theme
-                    .of(context)
-                    .cardColor,
+                color: Theme.of(context).cardColor,
                 border: Border(
                   top: BorderSide(
                     color: Colors.grey.shade200,
@@ -173,13 +540,11 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(width: 8),
                   IconButton(
-                    icon: _isSending
-                        ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                        : const Icon(Icons.send),
+                    icon: Icon(
+                        Icons.send,
+                        color: _isSending ?
+                        Colors.grey : Theme.of(context).iconTheme.color),
+
                     onPressed: _isSending ? null : _sendMessage,
                   ),
                 ],
@@ -190,143 +555,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
-  Color _getStatusColor() {
-    switch (widget.exchange.status) {
-      case ExchangeStatus.pending:
-        return Colors.orange;
-      case ExchangeStatus.accepted:
-        return Colors.green;
-      case ExchangeStatus.completed:
-        return Colors.blue;
-      case ExchangeStatus.declined:
-      case ExchangeStatus.cancelled:
-        return Colors.red;
-    }
-  }
-
-  IconData _getStatusIcon() {
-    switch (widget.exchange.status) {
-      case ExchangeStatus.pending:
-        return Icons.schedule;
-      case ExchangeStatus.accepted:
-        return Icons.check_circle;
-      case ExchangeStatus.completed:
-        return Icons.star;
-      case ExchangeStatus.declined:
-      case ExchangeStatus.cancelled:
-        return Icons.cancel;
-    }
-  }
-
-  String _getStatusText() {
-    switch (widget.exchange.status) {
-      case ExchangeStatus.pending:
-        return 'Exchange request is pending';
-      case ExchangeStatus.accepted:
-        return 'Exchange is active';
-      case ExchangeStatus.completed:
-        return 'Exchange completed';
-      case ExchangeStatus.declined:
-        return 'Exchange declined';
-      case ExchangeStatus.cancelled:
-        return 'Exchange cancelled';
-    }
-  }
-  Future<void> _sendMessage() async {
-    final message = _messageController.text.trim();
-    if (message.isEmpty || _isSending) return;
-
-    setState(() => _isSending = true);
-    try {
-      await _fs.sendMessage(
-        widget.exchange.id,
-        message,
-      );
-      _messageController.clear();
-
-      // Scroll to bottom after sending
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending message: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSending = false);
-      }
-    }
-  }
-
-  void _showExchangeDetails(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Exchange Details',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            _buildDetailRow('Status:', widget.exchange.status.toString().split('.').last.toUpperCase()),
-            _buildDetailRow('Teaching:', widget.exchange.senderSkill),
-            _buildDetailRow('Learning:', widget.exchange.receiverSkill),
-            if (widget.exchange.location != null)
-              _buildDetailRow('Location:', widget.exchange.location!),
-            if (widget.exchange.scheduledDate != null)
-              _buildDetailRow(
-                'Date:',
-                '${widget.exchange.scheduledDate!.day}/${widget.exchange.scheduledDate!.month}/${widget.exchange.scheduledDate!.year}',
-              ),
-            const SizedBox(height: 16),
-            Center(
-              child: TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(color: Colors.grey),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -334,6 +562,7 @@ class _MessageBubble extends StatelessWidget {
   final bool isMyMessage;
 
   const _MessageBubble({
+    super.key,
     required this.message,
     required this.isMyMessage,
   });
@@ -358,7 +587,7 @@ class _MessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              message.message,
+              message.text,
               style: TextStyle(
                 color: isMyMessage ? Colors.white : null,
               ),
@@ -383,6 +612,7 @@ class _MessageBubble extends StatelessWidget {
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 }
+
 class _ExchangeDetailsSheet extends StatelessWidget {
   final ExchangeRequest exchange;
   final UserModel otherUser;
@@ -437,7 +667,9 @@ class _ExchangeDetailsSheet extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
           const SizedBox(width: 8),
-          Text(value),
+          Expanded(
+            child: Text(value),
+          ),
         ],
       ),
     );

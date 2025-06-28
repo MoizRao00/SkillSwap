@@ -42,19 +42,16 @@ class _CreateExchangeRequestScreenState
   Future<void> _loadCurrentUser() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser != null) {
-      final userData = await _fs.getUser(currentUser.uid); // This fetches *your* user's data
+      final userData = await _fs.getUser(currentUser.uid);
       if (mounted && userData != null) {
         setState(() {
-          _currentUserData = userData; // Store your user's full data
+          _currentUserData = userData;
 
-          // Initialize _selectedTeachSkill only if *your* skillsToTeach is not empty
-          // and set it to the first available skill or null
           _selectedTeachSkill = _currentUserData!.skillsToTeach.isNotEmpty
               ? _currentUserData!.skillsToTeach.first
               : null;
 
-          // Initialize _selectedLearnSkill only if *otherUser's* skillsToTeach is not empty
-          // and set it to the first available skill or null
+
           _selectedLearnSkill = widget.otherUser.skillsToTeach.isNotEmpty
               ? widget.otherUser.skillsToTeach.first
               : null;
@@ -75,7 +72,7 @@ class _CreateExchangeRequestScreenState
     setState(() => _isLoading = true);
 
     try {
-      final success = await _fs.createExchangeRequest(
+      final success = await _fs.sendExchangeRequest(
         receiverId: widget.otherUser.uid,
         senderSkill: _selectedTeachSkill!,
         receiverSkill: _selectedLearnSkill!,
@@ -87,13 +84,26 @@ class _CreateExchangeRequestScreenState
       if (success && mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Exchange request sent successfully!')),
+          const SnackBar(
+            content: Text('Exchange request sent successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to send request. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending request: $e')),
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {

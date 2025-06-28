@@ -1,4 +1,4 @@
-// lib/models/notification_model.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum NotificationType {
   exchangeRequest,
@@ -31,30 +31,38 @@ class NotificationModel {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
       'userId': userId,
       'title': title,
       'message': message,
-      'type': type.toString(),
-      'timestamp': timestamp.toIso8601String(),
+      'type': type.name, // Use enum name instead of toString()
+      'timestamp': FieldValue.serverTimestamp(),
       'isRead': isRead,
       'data': data,
     };
   }
 
   factory NotificationModel.fromMap(Map<String, dynamic> map) {
+    DateTime parseTimestamp(dynamic timestamp) {
+      if (timestamp is Timestamp) {
+        return timestamp.toDate();
+      } else if (timestamp is String) {
+        return DateTime.parse(timestamp);
+      }
+      return DateTime.now(); // fallback
+    }
+
     return NotificationModel(
-      id: map['id'],
-      userId: map['userId'],
-      title: map['title'],
-      message: map['message'],
+      id: map['id'] ?? '',
+      userId: map['userId'] ?? '',
+      title: map['title'] ?? '',
+      message: map['message'] ?? '',
       type: NotificationType.values.firstWhere(
-            (e) => e.toString() == map['type'],
+            (e) => e.name == map['type'],
         orElse: () => NotificationType.exchangeRequest,
       ),
-      timestamp: DateTime.parse(map['timestamp']),
+      timestamp: parseTimestamp(map['timestamp']),
       isRead: map['isRead'] ?? false,
-      data: map['data'] ?? {},
+      data: Map<String, dynamic>.from(map['data'] ?? {}),
     );
   }
 }

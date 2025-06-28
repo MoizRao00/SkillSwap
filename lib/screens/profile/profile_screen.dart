@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; // Make sure this import is present for GeoPoint
 import '../../models/usermodel.dart';
+import '../../services/fcm_services.dart';
 import '../../services/firestore_service.dart';
 import '../../services/location_service.dart';
 import '../../utils/navigation_helper.dart';
@@ -84,6 +85,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       user.skillsToLearn,
                     ),
                   ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await FirestoreService().verifyFCMSetup();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('FCM setup verified - check console logs')),
+                      );
+                    },
+                    child: const Text('Verify FCM Setup'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      await FCMService.sendPushMessage(
+                        token: 'cRuA-yzWSaSTvmMDGlv22U:APA91bFcnCWSQ5hlo6TWHG_a8rHQ7DCRomMIX81CGb6891ZFzvSHIQkuAlEhIGNB2YnkARP836Xsf7D-xdhdvFwoxwBVBchC3Wf3up5id2sIMjCigIp3l9s',
+                        title: '🎉 It works!',
+                        body: 'Notification from SkillSwap app!',
+                      );
+                    },
+                    child: const Text('Send Test Notification'),
+                  )
                 ],
               ),
             ),

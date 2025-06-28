@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum ActivityType {
   exchangeRequest,
   exchangeAccepted,
@@ -31,29 +33,37 @@ class Activity {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
       'userId': userId,
-      'type': type.toString(),
+      'type': type.name, // Use enum name
       'title': title,
       'description': description,
-      'timestamp': timestamp.toIso8601String(),
+      'timestamp': FieldValue.serverTimestamp(),
       'data': data,
       'isRead': isRead,
     };
   }
 
   factory Activity.fromMap(Map<String, dynamic> map) {
+    DateTime parseTimestamp(dynamic timestamp) {
+      if (timestamp is Timestamp) {
+        return timestamp.toDate();
+      } else if (timestamp is String) {
+        return DateTime.parse(timestamp);
+      }
+      return DateTime.now(); // fallback
+    }
+
     return Activity(
-      id: map['id'],
-      userId: map['userId'],
+      id: map['id'] ?? '',
+      userId: map['userId'] ?? '',
       type: ActivityType.values.firstWhere(
-            (e) => e.toString() == map['type'],
+            (e) => e.name == map['type'],
         orElse: () => ActivityType.profileUpdate,
       ),
-      title: map['title'],
-      description: map['description'],
-      timestamp: DateTime.parse(map['timestamp']),
-      data: map['data'] ?? {},
+      title: map['title'] ?? '',
+      description: map['description'] ?? '',
+      timestamp: parseTimestamp(map['timestamp']),
+      data: Map<String, dynamic>.from(map['data'] ?? {}),
       isRead: map['isRead'] ?? false,
     );
   }

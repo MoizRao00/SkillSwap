@@ -102,15 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               style: TextStyle(fontSize: 16, color: Colors.blueGrey),
                             ),
                             SizedBox(height: 10),
-                            // You might want to add a button here to navigate
-                            // the user to their profile settings to set location.
-                            // For example:
-                            // ElevatedButton(
-                            //   onPressed: () {
-                            //     // Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileEditScreen()));
-                            //   },
-                            //   child: const Text("Set My Location"),
-                            // ),
+
                           ],
                         ),
                       ),

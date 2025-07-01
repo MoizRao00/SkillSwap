@@ -17,19 +17,20 @@ class AuthService {
       User? user = result.user;
 
       if (user != null) {
-        // Use the centralized method to create the user document
         await _firestoreService.createUserDocument(user.uid, name, email);
       }
       return user;
-    } catch (e) {
-      print('Signup Error: $e');
-      return null;
+    } on FirebaseAuthException catch (e) { // <--- Catch the specific FirebaseAuthException here
+      print('Signup Error (AuthService): ${e.code} - ${e.message}'); // Log for debugging
+      rethrow; // <--- CRITICAL: RE-THROW THE EXCEPTION
+    } catch (e) { // Catch any other unexpected non-Firebase Auth exceptions
+      print('Signup Error (AuthService - General): $e');
+      rethrow; // Re-throw general exceptions too
     }
   }
 
 
 
-// Login existing user
   Future<User?> login(String email, String password) async {
     try {
       UserCredential result =
@@ -46,9 +47,9 @@ class AuthService {
 
   // Logout
   Future<void> logout() async {
-    await _auth.signOut();                           // Firebase method jo user ko logout kar deta hai
+    await _auth.signOut();
   }
 
   // Get current user
-  User? get currentUser => _auth.currentUser;       // Ye property current logged in user ko return karti hai, agar koi login ho
+  User? get currentUser => _auth.currentUser;
 }

@@ -534,18 +534,20 @@ class FirestoreService {
       'phoneNumber': null,
       'location': null,
       'geohash': null,
-      'locationName': null, // <--- NEW: Initialize locationName here too
+      'locationName': null,
       'skillsToTeach': [],
       'skillsToLearn': [],
       'rating': 0.0,
+      'totalReviews': 0,
       'totalExchanges': 0,
       'reviews': [],
-      'createdAt': Timestamp.fromDate(now), // Changed to Timestamp
-      'lastActive': Timestamp.fromDate(now), // Changed to Timestamp
+      'createdAt': Timestamp.fromDate(now),
+      'lastActive': Timestamp.fromDate(now),
       'isAvailable': true,
       'isVerified': false,
       'portfolio': [],
     });
+    print('✅ User document created/updated in Firestore for UID: $uid');
   }
 
   Future<bool> userExists(String uid) async {

@@ -1,27 +1,26 @@
-// lib/models/usermodel.dart
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
   final String uid;
   final String email;
   final String name;
-  String? phoneNumber; // Made nullable and non-final
-  String? profileImageUrl; // Made nullable and non-final
+  String? phoneNumber;
+  String? profileImageUrl;
   final String bio;
   final List<String> skillsToTeach;
   final List<String> skillsToLearn;
-  Map<String, dynamic>? availability; // Made nullable and non-final
-  Map<String, dynamic>? ratings; // Made nullable and non-final
+  Map<String, dynamic>? availability;
+  Map<String, dynamic>? ratings;
   final GeoPoint? location;
-  String? geohash; // Made nullable and non-final
-  String? locationName; // <--- NEW: Human-readable location name
+  String? geohash;
+  String? locationName;
   final double rating;
   final int totalExchanges;
+  final int totalReviews;
   final List<String> reviews;
   final DateTime createdAt;
-  DateTime lastActive; // Non-final as it updates
-  bool isAvailable; // Non-final as it updates
+  DateTime lastActive;
+  bool isAvailable;
   final bool isVerified;
   final List<String> portfolio;
 
@@ -38,9 +37,10 @@ class UserModel {
     this.ratings,
     this.location,
     this.geohash,
-    this.locationName, // <--- NEW: Add to constructor
+    this.locationName,
     this.rating = 0.0,
     this.totalExchanges = 0,
+    this.totalReviews = 0,
     this.reviews = const [],
     required this.createdAt,
     required this.lastActive,
@@ -49,37 +49,113 @@ class UserModel {
     this.portfolio = const [],
   });
 
-  // Factory constructor for creating a UserModel object from a Map (Firestore document)
   factory UserModel.fromMap(Map<String, dynamic> data) {
+    // --- Start of specific field debugging ---
+    final String uid =
+        data['uid']
+            as String; // This should generally be safe if document exists
+
+    final String email =
+        data['email'] as String; // This should generally be safe
+
+    final String name = data['name'] as String; // This should generally be safe
+
+    final String? phoneNumber = data['phoneNumber'] as String?;
+
+    final String? profileImageUrl = data['profileImageUrl'] as String?;
+
+    final String bio = data['bio'] as String? ?? '';
+
+    final List<String> skillsToTeach =
+        (data['skillsToTeach'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        [];
+
+    final List<String> skillsToLearn =
+        (data['skillsToLearn'] as List<dynamic>?)
+            ?.map((e) => e as String)
+            .toList() ??
+        [];
+
+    final Map<String, dynamic>? availability = data['availability'] is Map
+        ? Map<String, dynamic>.from(data['availability'])
+        : null;
+
+    final Map<String, dynamic>? ratings = data['ratings'] is Map
+        ? Map<String, dynamic>.from(data['ratings'])
+        : null;
+
+    final GeoPoint? location = data['location'] is GeoPoint
+        ? data['location'] as GeoPoint
+        : null;
+
+    final String? geohash = data['geohash'] as String?;
+
+    final String? locationName = data['locationName'] as String?;
+
+    final double rating = (data['rating'] as num?)?.toDouble() ?? 0.0;
+
+    final int totalExchanges = data['totalExchanges'] as int? ?? 0;
+
+    final int totalReviews =
+        data['totalReviews'] as int? ?? 0; // This was the one we discussed
+
+    final List<String> reviews =
+        (data['reviews'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+
+    final DateTime createdAt = (data['createdAt'] is Timestamp)
+        ? (data['createdAt'] as Timestamp).toDate()
+        : (data['createdAt'] != null
+              ? DateTime.parse(data['createdAt'].toString())
+              : DateTime.now());
+
+    final DateTime lastActive = (data['lastActive'] is Timestamp)
+        ? (data['lastActive'] as Timestamp).toDate()
+        : (data['lastActive'] != null
+              ? DateTime.parse(data['lastActive'].toString())
+              : DateTime.now());
+
+    final bool isAvailable = data['isAvailable'] as bool? ?? true;
+
+    final bool isVerified = data['isVerified'] as bool? ?? false;
+
+    final List<String> portfolio =
+        (data['portfolio'] as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .toList() ??
+        [];
+    // --- End of specific field debugging ---
+
     return UserModel(
-      uid: data['uid'] as String,
-      email: data['email'] as String,
-      name: data['name'] as String,
-      phoneNumber: data['phoneNumber'] as String?,
-      profileImageUrl: data['profileImageUrl'] as String?,
-      bio: data['bio'] as String? ?? '',
-      skillsToTeach: List<String>.from(data['skillsToTeach'] ?? []),
-      skillsToLearn: List<String>.from(data['skillsToLearn'] ?? []),
-      availability: data['availability'] is Map ? Map<String, dynamic>.from(data['availability']) : null,
-      ratings: data['ratings'] is Map ? Map<String, dynamic>.from(data['ratings']) : null,
-      location: data['location'] is GeoPoint ? data['location'] as GeoPoint : null,
-      geohash: data['geohash'] as String?,
-      locationName: data['locationName'] as String?, // <--- NEW: Read from map
-      rating: (data['rating'] as num?)?.toDouble() ?? 0.0,
-      totalExchanges: data['totalExchanges'] as int? ?? 0,
-      reviews: List<String>.from(data['reviews'] ?? []),
-      // Firestore Timestamps are usually converted to DateTime.
-      // Your current parsing assumes String, which might be risky if Firestore sends Timestamps.
-      // If Firestore sends Timestamps, change this:
-      createdAt: (data['createdAt'] is Timestamp) ? (data['createdAt'] as Timestamp).toDate() : DateTime.parse(data['createdAt'] as String),
-      lastActive: (data['lastActive'] is Timestamp) ? (data['lastActive'] as Timestamp).toDate() : DateTime.parse(data['lastActive'] as String),
-      isAvailable: data['isAvailable'] as bool? ?? true,
-      isVerified: data['isVerified'] as bool? ?? false,
-      portfolio: List<String>.from(data['portfolio'] ?? []),
+      uid: uid,
+      email: email,
+      name: name,
+      phoneNumber: phoneNumber,
+      profileImageUrl: profileImageUrl,
+      bio: bio,
+      skillsToTeach: skillsToTeach,
+      skillsToLearn: skillsToLearn,
+      availability: availability,
+      ratings: ratings,
+      location: location,
+      geohash: geohash,
+      locationName: locationName,
+      rating: rating,
+      totalExchanges: totalExchanges,
+      totalReviews: totalReviews,
+      reviews: reviews,
+      createdAt: createdAt,
+      lastActive: lastActive,
+      isAvailable: isAvailable,
+      isVerified: isVerified,
+      portfolio: portfolio,
     );
   }
 
-  // Method to convert a UserModel object to a Map (for Firestore)
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
@@ -94,20 +170,19 @@ class UserModel {
       'ratings': ratings,
       'location': location,
       'geohash': geohash,
-      'locationName': locationName, // <--- NEW: Write to map
+      'locationName': locationName,
       'rating': rating,
       'totalExchanges': totalExchanges,
+      'totalReviews': totalReviews,
       'reviews': reviews,
-      // For Firestore, it's generally best to save DateTimes as Timestamps
-      'createdAt': Timestamp.fromDate(createdAt), // Changed to Timestamp
-      'lastActive': Timestamp.fromDate(lastActive), // Changed to Timestamp
+      'createdAt': Timestamp.fromDate(createdAt),
+      'lastActive': Timestamp.fromDate(lastActive),
       'isAvailable': isAvailable,
       'isVerified': isVerified,
       'portfolio': portfolio,
     };
   }
 
-  // Optional: copyWith method for convenient updates
   UserModel copyWith({
     String? uid,
     String? email,
@@ -121,7 +196,7 @@ class UserModel {
     Map<String, dynamic>? ratings,
     GeoPoint? location,
     String? geohash,
-    String? locationName, // <--- NEW: Add to copyWith
+    String? locationName,
     double? rating,
     int? totalExchanges,
     List<String>? reviews,
@@ -144,7 +219,7 @@ class UserModel {
       ratings: ratings ?? this.ratings,
       location: location ?? this.location,
       geohash: geohash ?? this.geohash,
-      locationName: locationName ?? this.locationName, // <--- NEW: Assign in copyWith
+      locationName: locationName ?? this.locationName,
       rating: rating ?? this.rating,
       totalExchanges: totalExchanges ?? this.totalExchanges,
       reviews: reviews ?? this.reviews,
